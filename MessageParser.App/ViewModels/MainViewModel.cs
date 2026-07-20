@@ -25,9 +25,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private IDisposable? _filterInfoSubscription;
 
     [ObservableProperty]
-    private string _rawMessage = string.Empty;
-
-    [ObservableProperty]
     private string _sender = string.Empty;
 
     [ObservableProperty]
@@ -37,35 +34,25 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private string _commandName = string.Empty;
 
     [ObservableProperty]
-    private bool _isValid;
-
-    [ObservableProperty]
-    private string _statusMessage = "Enter a message to parse.";
-
-    [ObservableProperty]
-    private string _statusBackground = "#1A1A1E";
-
-    [ObservableProperty]
-    private string _statusForeground = "#ECECF1";
-
-    [ObservableProperty]
     private bool _isSimulationRunning;
 
     [ObservableProperty]
     private string _simulationButtonText = "Start Simulator";
 
-    // Search bar query property
     [ObservableProperty]
     private string _searchQuery = string.Empty;
+
+    [ObservableProperty]
+    private SimulatedMessageItemViewModel? _selectedMessage;
+
+    [ObservableProperty]
+    private bool _hasSelectedMessage;
 
     public ObservableCollection<PayloadItemViewModel> PayloadItems { get; } = new();
     public ObservableCollection<SimulatedMessageItemViewModel> SimulatedMessages { get; } = new();
 
     public MainViewModel()
     {
-        // Set a default sample message
-        RawMessage = "CLIENT -> SERVER | LOGIN | username=alice;version=1.0;timestamp=1718816823";
-
         // Initialize and register filter decorators
         _filterRegistry = new FilterBusListenerRegistry(_dataBus);
 
@@ -154,11 +141,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             var filterInfo = _discoveredFilterInfos.FirstOrDefault(fi => fi.MessageTypeName == filterable.MessageTypeName);
             if (filterInfo == null) return false;
 
-            // Find property case-insensitively
             var propEntry = filterInfo.FilterableProperties.FirstOrDefault(p => string.Equals(p.Key, query.PropertyName, StringComparison.OrdinalIgnoreCase));
             if (propEntry.Key == null)
             {
-                // Property not found on this message type, exclude it
                 return false;
             }
 
@@ -168,7 +153,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
         else
         {
-            // Fallback: simple text search on summary and routing properties
             string text = SearchQuery.Trim();
             return filterable.Sender.Contains(text, StringComparison.OrdinalIgnoreCase) ||
                    filterable.Receiver.Contains(text, StringComparison.OrdinalIgnoreCase) ||
@@ -237,11 +221,82 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 SimulatedMessages.Add(msg);
             }
         }
+
+        // Clear details selection if it no longer matches the filter
+        if (SelectedMessage != null && !SimulatedMessages.Contains(SelectedMessage))
+        {
+            SelectedMessage = null;
+        }
     }
 
     partial void OnSearchQueryChanged(string value)
     {
         RefreshFilteredMessages();
+    }
+
+    partial void OnSelectedMessageChanged(SimulatedMessageItemViewModel? value)
+    {
+        PayloadItems.Clear();
+        HasSelectedMessage = value != null;
+
+        if (value == null)
+        {
+            Sender = string.Empty;
+            Receiver = string.Empty;
+            CommandName = string.Empty;
+            return;
+        }
+
+        Sender = value.Sender;
+        Receiver = value.Receiver;
+        CommandName = value.Type;
+
+        var msg = value.Filterable.WrappedMessage;
+        switch (msg)
+        {
+            case AirTrack air:
+                AddPayload("Callsign", air.Callsign);
+                AddPayload("Latitude", air.Latitude.ToString("F6"));
+                AddPayload("Longitude", air.Longitude.ToString("F6"));
+                AddPayload("Altitude", $"{air.Altitude} ft");
+                AddPayload("Speed", $"{air.Speed} kts");
+                AddPayload("Heading", $"{air.Heading}°");
+                AddPayload("Squawk", air.Squawk);
+                break;
+            case GroundTrack ground:
+                AddPayload("Unit ID", ground.UnitId);
+                AddPayload("Latitude", ground.Latitude.ToString("F6"));
+                AddPayload("Longitude", ground.Longitude.ToString("F6"));
+                AddPayload("Speed", $"{ground.Speed} mph");
+                AddPayload("Heading", $"{ground.Heading}°");
+                AddPayload("Type", ground.Type);
+                break;
+            case HeartBeat hb:
+                AddPayload("Device ID", hb.DeviceId);
+                AddPayload("Status", hb.Status);
+                AddPayload("Uptime", hb.Uptime);
+                AddPayload("Battery", hb.Battery);
+                break;
+            case SelfLocation self:
+                AddPayload("Latitude", self.Latitude.ToString("F6"));
+                AddPayload("Longitude", self.Longitude.ToString("F6"));
+                AddPayload("Altitude", $"{self.Altitude} m");
+                AddPayload("GPS Lock", self.GpsLock);
+                AddPayload("Precision", self.Precision);
+                break;
+            case GeneratorStatus gen:
+                AddPayload("Generator ID", gen.GenId);
+                AddPayload("State", gen.State);
+                AddPayload("Load", gen.Load);
+                AddPayload("Fuel Level", gen.FuelLevel);
+                AddPayload("Temperature", gen.Temperature);
+                break;
+        }
+    }
+
+    private void AddPayload(string key, string value)
+    {
+        PayloadItems.Add(new PayloadItemViewModel(key, value));
     }
 
     [RelayCommand]
@@ -265,55 +320,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             IsSimulationRunning = true;
             SimulationButtonText = "Stop Simulator";
         }
-    }
-
-    partial void OnRawMessageChanged(string value)
-    {
-        ParseMessage();
-    }
-
-    [RelayCommand]
-    private void ParseMessage()
-    {
-        var parsed = Parser.Parse(RawMessage);
-        Sender = parsed.Sender;
-        Receiver = parsed.Receiver;
-        CommandName = parsed.Command;
-        IsValid = parsed.IsValid;
-
-        PayloadItems.Clear();
-        foreach (var kvp in parsed.Payload)
-        {
-            PayloadItems.Add(new PayloadItemViewModel(kvp.Key, kvp.Value));
-        }
-
-        if (parsed.IsValid)
-        {
-            StatusMessage = "✓ Message successfully parsed!";
-            StatusBackground = "#15241E"; // Muted green
-            StatusForeground = "#86E0A3"; // Bright green
-        }
-        else
-        {
-            StatusMessage = string.IsNullOrEmpty(parsed.Error) ? "Invalid message format." : $"✗ {parsed.Error}";
-            StatusBackground = "#2D1F21"; // Muted red
-            StatusForeground = "#F88F92"; // Bright red
-        }
-    }
-
-    [RelayCommand]
-    private void LoadSample(string sampleType)
-    {
-        RawMessage = sampleType switch
-        {
-            "airtrack" => "AWACS -> HQ | AIR_TRACK | callsign=AF101;lat=34.0522;lon=-118.2437;alt=35000;speed=460;heading=090;squawk=1200",
-            "groundtrack" => "SCOUT_01 -> HQ | GROUND_TRACK | unit_id=T72_05;lat=34.0532;lon=-118.2447;speed=35;heading=180;type=Tank",
-            "heartbeat" => "DRONE_01 -> C2 | HEARTBEAT | device_id=DRN-99;status=NOMINAL;uptime=1420s;battery=88%",
-            "selflocation" => "SOLDIER_03 -> HQ | SELF_LOCATION | lat=34.0512;lon=-118.2427;alt=280;gps_lock=3D;precision=1.2m",
-            "generatorstatus" => "BASE_GEN -> MONITOR | GENERATOR_STATUS | gen_id=GEN_B4;state=RUNNING;load=78%;fuel=92%;temp=75.4C",
-            "invalid" => "INVALID_MESSAGE_WITHOUT_PIPES",
-            _ => string.Empty
-        };
     }
 
     public void Dispose()
