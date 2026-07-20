@@ -27,6 +27,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private readonly List<int> _filteredIndices = new();
     private readonly StringPool _stringPool = new();
     private readonly MessageRegistry _messageRegistry = new();
+    private readonly HashSet<string> _publishedMessageTypes = new(StringComparer.OrdinalIgnoreCase);
 
     private IDisposable? _filterableSubscription;
     private IDisposable? _filterInfoSubscription;
@@ -55,6 +56,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     private bool _hasSelectedMessage;
 
+    [ObservableProperty]
+    private string _availablePropertiesHint = "Sender, Receiver";
+
     public ObservableCollection<PayloadItemViewModel> PayloadItems { get; } = new();
 
     [ObservableProperty]
@@ -62,9 +66,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public MainViewModel()
     {
-        // Hook up event to automatically publish registered schemas to the data bus
-        _messageRegistry.SchemaRegistered += schema => _dataBus.Publish<IFilterInfo>(schema);
-
         // Initialize virtualized collection
         _simulatedMessages = new VirtualizedMessageList(_allMessages, _filteredIndices, _messageRegistry);
 
@@ -120,14 +121,44 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             if (!_discoveredFilterInfos.Any(fi => fi.MessageTypeName == filterInfo.MessageTypeName))
             {
                 _discoveredFilterInfos.Add(filterInfo);
+                UpdateAvailablePropertiesHint();
             }
         });
+    }
+
+    private void UpdateAvailablePropertiesHint()
+    {
+        var properties = _discoveredFilterInfos
+            .SelectMany(fi => fi.FilterableProperties.Keys)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(p => p)
+            .ToList();
+
+        // Always put Sender and Receiver first if present
+        properties.Remove("Sender");
+        properties.Remove("Receiver");
+        properties.Insert(0, "Sender");
+        properties.Insert(1, "Receiver");
+
+        AvailablePropertiesHint = string.Join(", ", properties);
     }
 
     private void OnFilterableMessageReceived(IFilterable filterable)
     {
         Dispatcher.UIThread.Post(() =>
         {
+            lock (_publishedMessageTypes)
+            {
+                if (_publishedMessageTypes.Add(filterable.MessageTypeName))
+                {
+                    var schema = _messageRegistry.GetSchema(filterable.MessageTypeName);
+                    if (schema != null)
+                    {
+                        _dataBus.Publish<IFilterInfo>(schema);
+                    }
+                }
+            }
+
             lock (_allMessages)
             {
                 _allMessages.Add(filterable);

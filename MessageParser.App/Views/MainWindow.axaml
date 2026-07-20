@@ -69,6 +69,7 @@
                                         Foreground="#F88F92"/>
                             </Grid>
                             <TextBlock Text="Supports structured format: Property Operator Value (e.g. Speed >= 450, State == RUNNING)" FontSize="10" Foreground="#646470" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding AvailablePropertiesHint, StringFormat='Available fields: {0}'}" FontSize="10" Foreground="#8E8E9F" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
 
