@@ -81,7 +81,7 @@
                              BorderThickness="1"
                              CornerRadius="6">
                         <ListBox.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="vm:SimulatedMessageItemViewModel">
                                 <Border BorderBrush="#26262B" BorderThickness="0,0,0,1" Padding="10,8">
                                     <StackPanel Spacing="4">
                                         <Grid ColumnDefinitions="Auto, *, Auto">

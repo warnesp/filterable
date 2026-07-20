@@ -1,6 +1,7 @@
 using System;
+using MessageParser.Core.Messages;
 
-namespace MessageParser.Core.Messages
+namespace MessageParser.Plugins
 {
     public class HeartBeat : MessageBase
     {

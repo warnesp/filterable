@@ -1,7 +1,9 @@
 using System;
 using System.Globalization;
+using MessageParser.Core;
+using MessageParser.Core.Messages;
 
-namespace MessageParser.Core.Messages
+namespace MessageParser.Plugins
 {
     public static class MessageMapper
     {

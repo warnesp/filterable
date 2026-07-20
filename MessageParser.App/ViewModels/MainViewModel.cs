@@ -1,7 +1,9 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MessageParser.Core;
@@ -9,6 +11,8 @@ using MessageParser.Core.Bus;
 using MessageParser.Core.Messages;
 using MessageParser.Core.Simulation;
 using MessageParser.Core.Filtering;
+using MessageParser.App.Models;
+using MessageParser.Plugins;
 using Avalonia.Threading;
 
 namespace MessageParser.App.ViewModels;
@@ -17,10 +21,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 {
     private readonly DataBus _dataBus = new();
     private readonly TestMessageLink _messageLink = new();
-    private readonly FilterBusListenerRegistry _filterRegistry;
     private readonly List<IFilterInfo> _discoveredFilterInfos = new();
-    private readonly List<SimulatedMessageItemViewModel> _allSimulatedMessages = new();
     
+    private readonly List<IFilterable> _allMessages = new();
+    private readonly List<int> _filteredIndices = new();
+    private readonly StringPool _stringPool = new();
+    private readonly MessageRegistry _messageRegistry = new();
+
     private IDisposable? _filterableSubscription;
     private IDisposable? _filterInfoSubscription;
 
@@ -49,16 +56,25 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private bool _hasSelectedMessage;
 
     public ObservableCollection<PayloadItemViewModel> PayloadItems { get; } = new();
-    public ObservableCollection<SimulatedMessageItemViewModel> SimulatedMessages { get; } = new();
+
+    [ObservableProperty]
+    private IList _simulatedMessages;
 
     public MainViewModel()
     {
-        // Initialize and register filter decorators
-        _filterRegistry = new FilterBusListenerRegistry(_dataBus);
+        // Hook up event to automatically publish registered schemas to the data bus
+        _messageRegistry.SchemaRegistered += schema => _dataBus.Publish<IFilterInfo>(schema);
+
+        // Initialize virtualized collection
+        _simulatedMessages = new VirtualizedMessageList(_allMessages, _filteredIndices, _messageRegistry);
 
         // Subscribe to IFilterable (decorated messages) and IFilterInfo (message metadata)
         _filterableSubscription = _dataBus.Subscribe<IFilterable>(OnFilterableMessageReceived);
         _filterInfoSubscription = _dataBus.Subscribe<IFilterInfo>(OnFilterInfoReceived);
+
+        // Instantiate and register default plugin (statically for this demo)
+        var basePlugin = new BaseMessagesPlugin();
+        basePlugin.Initialize(_messageRegistry);
 
         // Bind simulator event
         _messageLink.RawMessageReceived += OnSimulatorRawMessageReceived;
@@ -69,10 +85,30 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         var parsed = Parser.Parse(rawMessage);
         if (parsed.IsValid)
         {
-            var typedMessage = parsed.ToTypedMessage();
+            var typedMessage = _messageRegistry.Parse(parsed) as MessageBase;
             if (typedMessage != null)
             {
-                _dataBus.Publish(typedMessage);
+                var schema = _messageRegistry.GetSchema(typedMessage.GetType().Name);
+                if (schema != null)
+                {
+                    var senderInterned = _stringPool.GetOrAdd(typedMessage.Sender);
+                    var receiverInterned = _stringPool.GetOrAdd(typedMessage.Receiver);
+                    var typeInterned = _stringPool.GetOrAdd(schema.MessageTypeName);
+
+                    typedMessage.Sender = senderInterned;
+                    typedMessage.Receiver = receiverInterned;
+
+                    var filterable = new DynamicFilterable(
+                        typedMessage,
+                        typeInterned,
+                        typedMessage.ReceivedTime,
+                        senderInterned,
+                        receiverInterned,
+                        _messageRegistry
+                    );
+
+                    _dataBus.Publish<IFilterable>(filterable);
+                }
             }
         }
     }
@@ -92,46 +128,22 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         Dispatcher.UIThread.Post(() =>
         {
-            string detailsSummary = filterable.WrappedMessage switch
+            lock (_allMessages)
             {
-                AirTrack air => $"Callsign: {air.Callsign}, Alt: {air.Altitude}ft, Speed: {air.Speed}kts",
-                GroundTrack ground => $"Unit: {ground.UnitId}, Type: {ground.Type}, Speed: {ground.Speed}mph",
-                HeartBeat hb => $"Device: {hb.DeviceId}, Status: {hb.Status}, Battery: {hb.Battery}",
-                SelfLocation self => $"GPS: {self.GpsLock}, Lat/Lon: {self.Latitude:F3}/{self.Longitude:F3}, Alt: {self.Altitude}m",
-                GeneratorStatus gen => $"Gen: {gen.GenId}, State: {gen.State}, Load: {gen.Load}, Fuel: {gen.FuelLevel}",
-                _ => "Unknown typed message"
-            };
+                _allMessages.Add(filterable);
+                int newIndex = _allMessages.Count - 1;
 
-            var item = new SimulatedMessageItemViewModel
-            {
-                Time = filterable.ReceivedTime.ToLocalTime().ToString("HH:mm:ss.fff"),
-                Type = filterable.MessageTypeName,
-                Sender = filterable.Sender,
-                Receiver = filterable.Receiver,
-                Summary = detailsSummary,
-                Filterable = filterable
-            };
-
-            // Add to in-memory list (capped at 100)
-            _allSimulatedMessages.Insert(0, item);
-            if (_allSimulatedMessages.Count > 100)
-            {
-                _allSimulatedMessages.RemoveAt(_allSimulatedMessages.Count - 1);
-            }
-
-            // If it passes current filter, display it in the ListBox
-            if (MatchesFilter(filterable, detailsSummary))
-            {
-                SimulatedMessages.Insert(0, item);
-                if (SimulatedMessages.Count > 100)
+                if (MatchesFilter(filterable))
                 {
-                    SimulatedMessages.RemoveAt(SimulatedMessages.Count - 1);
+                    _filteredIndices.Add(newIndex);
+                    int filteredIndex = _filteredIndices.Count - 1;
+                    (SimulatedMessages as VirtualizedMessageList)?.NotifyItemAdded(filteredIndex);
                 }
             }
         });
     }
 
-    private bool MatchesFilter(IFilterable filterable, string summary)
+    private bool MatchesFilter(IFilterable filterable)
     {
         if (string.IsNullOrWhiteSpace(SearchQuery)) return true;
 
@@ -144,6 +156,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             var propEntry = filterInfo.FilterableProperties.FirstOrDefault(p => string.Equals(p.Key, query.PropertyName, StringComparison.OrdinalIgnoreCase));
             if (propEntry.Key == null)
             {
+                object? fallbackVal = query.PropertyName.ToUpperInvariant() switch
+                {
+                    "SENDER" => filterable.Sender,
+                    "RECEIVER" => filterable.Receiver,
+                    "MESSAGETYPE" or "TYPE" => filterable.MessageTypeName,
+                    _ => null
+                };
+                if (fallbackVal is string fs)
+                {
+                    var fallbackPredicate = GetPredicateForOperator(typeof(string), query.Operator, query.Value);
+                    return fallbackPredicate(fs);
+                }
                 return false;
             }
 
@@ -154,11 +178,120 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         else
         {
             string text = SearchQuery.Trim();
-            return filterable.Sender.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                   filterable.Receiver.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                   filterable.MessageTypeName.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                   summary.Contains(text, StringComparison.OrdinalIgnoreCase);
+            if (filterable.Sender.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                filterable.Receiver.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                filterable.MessageTypeName.Contains(text, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var schema = _messageRegistry.GetSchema(filterable.MessageTypeName);
+            if (schema != null)
+            {
+                var summary = schema.SummaryFormatter(filterable.WrappedMessage);
+                return summary.Contains(text, StringComparison.OrdinalIgnoreCase);
+            }
+            return false;
         }
+    }
+
+    private Func<IFilterable, bool> CompileFilter(string queryText)
+    {
+        if (string.IsNullOrWhiteSpace(queryText))
+        {
+            return _ => true;
+        }
+
+        var query = QueryParser.Parse(queryText);
+        if (query.IsValid)
+        {
+            return filterable =>
+            {
+                var info = _discoveredFilterInfos.FirstOrDefault(fi => fi.MessageTypeName == filterable.MessageTypeName);
+                if (info == null) return false;
+
+                var propEntry = info.FilterableProperties.FirstOrDefault(p => string.Equals(p.Key, query.PropertyName, StringComparison.OrdinalIgnoreCase));
+                if (propEntry.Key == null)
+                {
+                    object? fallbackVal = query.PropertyName.ToUpperInvariant() switch
+                    {
+                        "SENDER" => filterable.Sender,
+                        "RECEIVER" => filterable.Receiver,
+                        "MESSAGETYPE" or "TYPE" => filterable.MessageTypeName,
+                        _ => null
+                    };
+                    if (fallbackVal is string fs)
+                    {
+                        var fallbackPredicate = GetPredicateForOperator(typeof(string), query.Operator, query.Value);
+                        return fallbackPredicate(fs);
+                    }
+                    return false;
+                }
+
+                var propType = propEntry.Value;
+                var predicate = GetPredicateForOperator(propType, query.Operator, query.Value);
+                return filterable.ApplyFilter(propEntry.Key, predicate);
+            };
+        }
+        else
+        {
+            string text = queryText.Trim();
+            return filterable =>
+            {
+                if (filterable.Sender.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                    filterable.Receiver.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                    filterable.MessageTypeName.Contains(text, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                var schema = _messageRegistry.GetSchema(filterable.MessageTypeName);
+                if (schema != null)
+                {
+                    var summary = schema.SummaryFormatter(filterable.WrappedMessage);
+                    return summary.Contains(text, StringComparison.OrdinalIgnoreCase);
+                }
+                return false;
+            };
+        }
+    }
+
+    private async Task RefreshFilteredMessagesAsync()
+    {
+        string currentQuery = SearchQuery;
+        var filterPredicate = CompileFilter(currentQuery);
+
+        var matched = await Task.Run(() =>
+        {
+            var results = new List<int>();
+            lock (_allMessages)
+            {
+                for (int i = 0; i < _allMessages.Count; i++)
+                {
+                    if (filterPredicate(_allMessages[i]))
+                    {
+                        results.Add(i);
+                    }
+                }
+            }
+            return results;
+        });
+
+        lock (_allMessages)
+        {
+            _filteredIndices.Clear();
+            _filteredIndices.AddRange(matched);
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            (SimulatedMessages as VirtualizedMessageList)?.NotifyReset();
+
+            if (SelectedMessage != null && !SimulatedMessages.Cast<SimulatedMessageItemViewModel>().Contains(SelectedMessage))
+            {
+                SelectedMessage = null;
+            }
+        });
     }
 
     private Func<object?, bool> GetPredicateForOperator(Type propertyType, string op, string filterVal)
@@ -211,27 +344,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         return _ => true;
     }
 
-    private void RefreshFilteredMessages()
-    {
-        SimulatedMessages.Clear();
-        foreach (var msg in _allSimulatedMessages)
-        {
-            if (MatchesFilter(msg.Filterable, msg.Summary))
-            {
-                SimulatedMessages.Add(msg);
-            }
-        }
-
-        // Clear details selection if it no longer matches the filter
-        if (SelectedMessage != null && !SimulatedMessages.Contains(SelectedMessage))
-        {
-            SelectedMessage = null;
-        }
-    }
-
     partial void OnSearchQueryChanged(string value)
     {
-        RefreshFilteredMessages();
+        _ = RefreshFilteredMessagesAsync();
     }
 
     partial void OnSelectedMessageChanged(SimulatedMessageItemViewModel? value)
@@ -252,45 +367,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         CommandName = value.Type;
 
         var msg = value.Filterable.WrappedMessage;
-        switch (msg)
+        var schema = _messageRegistry.GetSchema(value.Type);
+        if (schema != null)
         {
-            case AirTrack air:
-                AddPayload("Callsign", air.Callsign);
-                AddPayload("Latitude", air.Latitude.ToString("F6"));
-                AddPayload("Longitude", air.Longitude.ToString("F6"));
-                AddPayload("Altitude", $"{air.Altitude} ft");
-                AddPayload("Speed", $"{air.Speed} kts");
-                AddPayload("Heading", $"{air.Heading}°");
-                AddPayload("Squawk", air.Squawk);
-                break;
-            case GroundTrack ground:
-                AddPayload("Unit ID", ground.UnitId);
-                AddPayload("Latitude", ground.Latitude.ToString("F6"));
-                AddPayload("Longitude", ground.Longitude.ToString("F6"));
-                AddPayload("Speed", $"{ground.Speed} mph");
-                AddPayload("Heading", $"{ground.Heading}°");
-                AddPayload("Type", ground.Type);
-                break;
-            case HeartBeat hb:
-                AddPayload("Device ID", hb.DeviceId);
-                AddPayload("Status", hb.Status);
-                AddPayload("Uptime", hb.Uptime);
-                AddPayload("Battery", hb.Battery);
-                break;
-            case SelfLocation self:
-                AddPayload("Latitude", self.Latitude.ToString("F6"));
-                AddPayload("Longitude", self.Longitude.ToString("F6"));
-                AddPayload("Altitude", $"{self.Altitude} m");
-                AddPayload("GPS Lock", self.GpsLock);
-                AddPayload("Precision", self.Precision);
-                break;
-            case GeneratorStatus gen:
-                AddPayload("Generator ID", gen.GenId);
-                AddPayload("State", gen.State);
-                AddPayload("Load", gen.Load);
-                AddPayload("Fuel Level", gen.FuelLevel);
-                AddPayload("Temperature", gen.Temperature);
-                break;
+            var fields = schema.PayloadExtractor(msg);
+            foreach (var field in fields)
+            {
+                AddPayload(field.Key, field.Value);
+            }
         }
     }
 
@@ -326,7 +410,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         _filterableSubscription?.Dispose();
         _filterInfoSubscription?.Dispose();
-        _filterRegistry.Dispose();
         _messageLink.Stop();
     }
 }
@@ -352,3 +435,4 @@ public class SimulatedMessageItemViewModel
     public string Summary { get; set; } = string.Empty;
     public IFilterable Filterable { get; set; } = null!;
 }
+

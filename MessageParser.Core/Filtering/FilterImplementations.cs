@@ -36,125 +36,54 @@ namespace MessageParser.Core.Filtering
         public abstract bool ApplyFilter(string propertyName, Func<object?, bool> predicate);
     }
 
-    public class AirTrackFilterable : FilterableBase<AirTrack>
+    public class DynamicFilterable : IFilterable
     {
-        public AirTrackFilterable(AirTrack message) : base(message) { }
+        private readonly MessageRegistry _registry;
 
-        public override bool ApplyFilter(string propertyName, Func<object?, bool> predicate)
+        public object WrappedMessage { get; }
+        public Type MessageType { get; }
+        public string MessageTypeName { get; }
+        public DateTime ReceivedTime { get; }
+        public string Sender { get; }
+        public string Receiver { get; }
+
+        public DynamicFilterable(object message, string messageTypeName, DateTime receivedTime, string sender, string receiver, MessageRegistry registry)
         {
-            if (predicate == null) return true;
-
-            object? value = propertyName.ToUpperInvariant() switch
-            {
-                "SENDER" => TypedMessage.Sender,
-                "RECEIVER" => TypedMessage.Receiver,
-                "CALLSIGN" => TypedMessage.Callsign,
-                "LATITUDE" => TypedMessage.Latitude,
-                "LONGITUDE" => TypedMessage.Longitude,
-                "ALTITUDE" => TypedMessage.Altitude,
-                "SPEED" => TypedMessage.Speed,
-                "HEADING" => TypedMessage.Heading,
-                "SQUAWK" => TypedMessage.Squawk,
-                _ => null
-            };
-
-            return predicate(value);
+            WrappedMessage = message ?? throw new ArgumentNullException(nameof(message));
+            MessageType = message.GetType();
+            MessageTypeName = messageTypeName ?? throw new ArgumentNullException(nameof(messageTypeName));
+            ReceivedTime = receivedTime;
+            Sender = sender ?? string.Empty;
+            Receiver = receiver ?? string.Empty;
+            _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         }
-    }
 
-    public class GroundTrackFilterable : FilterableBase<GroundTrack>
-    {
-        public GroundTrackFilterable(GroundTrack message) : base(message) { }
-
-        public override bool ApplyFilter(string propertyName, Func<object?, bool> predicate)
+        public bool ApplyFilter(string propertyName, Func<object?, bool> predicate)
         {
             if (predicate == null) return true;
 
-            object? value = propertyName.ToUpperInvariant() switch
+            var getter = _registry.GetGetter(MessageTypeName, propertyName);
+            if (getter == null)
             {
-                "SENDER" => TypedMessage.Sender,
-                "RECEIVER" => TypedMessage.Receiver,
-                "UNITID" => TypedMessage.UnitId,
-                "LATITUDE" => TypedMessage.Latitude,
-                "LONGITUDE" => TypedMessage.Longitude,
-                "SPEED" => TypedMessage.Speed,
-                "HEADING" => TypedMessage.Heading,
-                "TYPE" => TypedMessage.Type,
-                _ => null
-            };
+                object? coreValue = propertyName.ToUpperInvariant() switch
+                {
+                    "SENDER" => Sender,
+                    "RECEIVER" => Receiver,
+                    "MESSAGETYPENAME" => MessageTypeName,
+                    _ => null
+                };
+                return predicate(coreValue);
+            }
 
-            return predicate(value);
-        }
-    }
-
-    public class HeartBeatFilterable : FilterableBase<HeartBeat>
-    {
-        public HeartBeatFilterable(HeartBeat message) : base(message) { }
-
-        public override bool ApplyFilter(string propertyName, Func<object?, bool> predicate)
-        {
-            if (predicate == null) return true;
-
-            object? value = propertyName.ToUpperInvariant() switch
+            try
             {
-                "SENDER" => TypedMessage.Sender,
-                "RECEIVER" => TypedMessage.Receiver,
-                "DEVICEID" => TypedMessage.DeviceId,
-                "STATUS" => TypedMessage.Status,
-                "UPTIME" => TypedMessage.Uptime,
-                "BATTERY" => TypedMessage.Battery,
-                _ => null
-            };
-
-            return predicate(value);
-        }
-    }
-
-    public class SelfLocationFilterable : FilterableBase<SelfLocation>
-    {
-        public SelfLocationFilterable(SelfLocation message) : base(message) { }
-
-        public override bool ApplyFilter(string propertyName, Func<object?, bool> predicate)
-        {
-            if (predicate == null) return true;
-
-            object? value = propertyName.ToUpperInvariant() switch
+                object val = getter(WrappedMessage);
+                return predicate(val);
+            }
+            catch
             {
-                "SENDER" => TypedMessage.Sender,
-                "RECEIVER" => TypedMessage.Receiver,
-                "LATITUDE" => TypedMessage.Latitude,
-                "LONGITUDE" => TypedMessage.Longitude,
-                "ALTITUDE" => TypedMessage.Altitude,
-                "GPSLOCK" => TypedMessage.GpsLock,
-                "PRECISION" => TypedMessage.Precision,
-                _ => null
-            };
-
-            return predicate(value);
-        }
-    }
-
-    public class GeneratorStatusFilterable : FilterableBase<GeneratorStatus>
-    {
-        public GeneratorStatusFilterable(GeneratorStatus message) : base(message) { }
-
-        public override bool ApplyFilter(string propertyName, Func<object?, bool> predicate)
-        {
-            if (predicate == null) return true;
-
-            object? value = propertyName.ToUpperInvariant() switch
-            {
-                "SENDER" => TypedMessage.Sender,
-                "RECEIVER" => TypedMessage.Receiver,
-                "GENID" => TypedMessage.GenId,
-                "STATE" => TypedMessage.State,
-                "LOAD" => TypedMessage.Load,
-                "FUELLEVEL" => TypedMessage.FuelLevel,
-                "TEMPERATURE" => TypedMessage.Temperature,
-                _ => null
-            };
-
-            return predicate(value);
+                return false;
+            }
         }
     }
 }
