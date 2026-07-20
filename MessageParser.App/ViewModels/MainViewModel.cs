@@ -99,14 +99,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                     typedMessage.Sender = senderInterned;
                     typedMessage.Receiver = receiverInterned;
 
-                    var filterable = new DynamicFilterable(
-                        typedMessage,
-                        typeInterned,
-                        typedMessage.ReceivedTime,
-                        senderInterned,
-                        receiverInterned,
-                        _messageRegistry
-                    );
+                    var filterable = GeneratedFilterableFactory.CreateWrapper(typedMessage);
 
                     _dataBus.Publish<IFilterable>(filterable);
                 }

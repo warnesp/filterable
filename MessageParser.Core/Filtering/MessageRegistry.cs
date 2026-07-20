@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq.Expressions;
 
 namespace MessageParser.Core.Filtering
 {
@@ -9,30 +8,12 @@ namespace MessageParser.Core.Filtering
     {
         private readonly ConcurrentDictionary<string, MessageSchema> _schemas = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, Func<ParsedMessage, object>> _parsers = new(StringComparer.OrdinalIgnoreCase);
-        private readonly ConcurrentDictionary<(string SchemaName, string PropName), Func<object, object>> _getters = new();
 
         public event Action<MessageSchema>? SchemaRegistered;
 
         public void RegisterSchema(MessageSchema schema)
         {
             _schemas[schema.MessageTypeName] = schema;
-
-            // Compile and cache getters for all filterable properties in the schema
-            foreach (var prop in schema.FilterableProperties.Keys)
-            {
-                string realPropName = string.Empty;
-                try
-                {
-                    realPropName = schema.PropertyNameMapping[prop];
-                    var getter = CompileGetter(schema.MessageType, realPropName);
-                    _getters[(schema.MessageTypeName, prop)] = getter;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Failed to compile getter for property '{prop}' (real property '{realPropName}') on type '{schema.MessageType.Name}': {ex.Message}");
-                }
-            }
-
             SchemaRegistered?.Invoke(schema);
         }
 
@@ -55,21 +36,6 @@ namespace MessageParser.Core.Filtering
         {
             if (parsed == null || !parsed.IsValid) return null;
             return _parsers.TryGetValue(parsed.Command, out var parser) ? parser(parsed) : null;
-        }
-
-        public Func<object, object>? GetGetter(string schemaName, string propertyName)
-        {
-            return _getters.TryGetValue((schemaName, propertyName), out var getter) ? getter : null;
-        }
-
-        private static Func<object, object> CompileGetter(Type type, string propertyName)
-        {
-            var param = Expression.Parameter(typeof(object), "obj");
-            var cast = Expression.Convert(param, type);
-            var property = Expression.PropertyOrField(cast, propertyName);
-            var box = Expression.Convert(property, typeof(object));
-
-            return Expression.Lambda<Func<object, object>>(box, param).Compile();
         }
     }
 }

@@ -2,4 +2,5 @@
   <Project Path="MessageParser.App/MessageParser.App.csproj" />
   <Project Path="MessageParser.Core/MessageParser.Core.csproj" />
   <Project Path="MessageParser.Plugins/MessageParser.Plugins.csproj" />
+  <Project Path="MessageParser.Generators/MessageParser.Generators.csproj" />
 </Solution>
