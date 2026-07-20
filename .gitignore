@@ -1,0 +1,27 @@
+## Ignore Visual Studio & Rider temporary files
+.vs/
+.idea/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+MonoAndroid/
+MonoTouch/
+Xamarin.iOS/
+Xamarin.Android/
+
+## Ignore MSBuild/dotnet build outputs
+**/bin/
+**/obj/
+publish/
+
+## Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+## Ignore crash dumps and user logs
+*.log
+*.err
+*.crash

@@ -1,0 +1,221 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MessageParser.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="850" d:DesignHeight="550"
+        Width="1280" Height="700"
+        x:Class="MessageParser.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="Modern Message Parser &amp; Analyzer"
+        Background="#121214">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto, *">
+        <!-- Header Section -->
+        <Border Grid.Row="0" Background="#1E1E22" Padding="20,15" BorderBrush="#2D2D34" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*, Auto">
+                <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock Text="Message Protocol Analyzer" FontSize="20" FontWeight="Bold" Foreground="#ECECF1" />
+                    <TextBlock Text="Parse, inspect, and validate custom network communication messages." FontSize="12" Foreground="#8E8E9F" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Content="AirTrack" Command="{Binding LoadSampleCommand}" CommandParameter="airtrack" Classes="accent" />
+                    <Button Content="GroundTrack" Command="{Binding LoadSampleCommand}" CommandParameter="groundtrack" />
+                    <Button Content="HeartBeat" Command="{Binding LoadSampleCommand}" CommandParameter="heartbeat" />
+                    <Button Content="SelfLocation" Command="{Binding LoadSampleCommand}" CommandParameter="selflocation" />
+                    <Button Content="Generator Status" Command="{Binding LoadSampleCommand}" CommandParameter="generatorstatus" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Content Section -->
+        <Grid Grid.Row="1" ColumnDefinitions="*, 1.2*, 1.2*" Margin="20">
+            
+            <!-- Left Side: Input Panel -->
+            <Grid Grid.Column="0" RowDefinitions="Auto, *, Auto" Margin="0,0,10,0">
+                <TextBlock Grid.Row="0" Text="Raw Message Input" FontSize="14" FontWeight="SemiBold" Foreground="#ECECF1" Margin="0,0,0,8"/>
+                
+                <TextBox Grid.Row="1" 
+                         Text="{Binding RawMessage, Mode=TwoWay}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         PlaceholderText="Format: SENDER -> RECEIVER | COMMAND | KEY=VAL;..."
+                         FontFamily="Consolas, Courier New, monospace"
+                         FontSize="13"
+                         Background="#1A1A1E"
+                         BorderBrush="#2D2D34"
+                         BorderThickness="1"
+                         CornerRadius="6"
+                         Padding="12"
+                         Foreground="#ECECF1"/>
+                
+                <!-- Status bar -->
+                <Border Grid.Row="2" 
+                        Margin="0,15,0,0" 
+                        Padding="12" 
+                        CornerRadius="6" 
+                        Background="{Binding StatusBackground}" 
+                        BorderBrush="{Binding StatusForeground}"
+                        BorderThickness="1">
+                    <TextBlock Text="{Binding StatusMessage}" 
+                               Foreground="{Binding StatusForeground}" 
+                               FontSize="13"
+                               TextWrapping="Wrap" />
+                </Border>
+            </Grid>
+
+            <!-- Right Side: Parsing Output -->
+            <Border Grid.Column="1" 
+                    Background="#1A1A1E" 
+                    BorderBrush="#2D2D34" 
+                    BorderThickness="1" 
+                    CornerRadius="8" 
+                    Padding="20" 
+                    Margin="10,0,0,0">
+                <Grid RowDefinitions="Auto, Auto, Auto, *">
+                    <!-- Heading -->
+                    <TextBlock Grid.Row="0" Text="Inspection Details" FontSize="14" FontWeight="SemiBold" Foreground="#ECECF1" Margin="0,0,0,15"/>
+                    
+                    <!-- Routing visualization -->
+                    <Grid Grid.Row="1" ColumnDefinitions="*, Auto, *" Margin="0,0,0,20">
+                        <Border Grid.Column="0" Background="#26262B" Padding="12,10" CornerRadius="6" HorizontalAlignment="Stretch">
+                            <StackPanel Spacing="2" HorizontalAlignment="Center">
+                                <TextBlock Text="SENDER" FontSize="9" FontWeight="Bold" Foreground="#8E8E9F" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding Sender}" FontSize="15" FontWeight="SemiBold" Foreground="#ECECF1" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <PathIcon Grid.Column="1" 
+                                  Data="M1 8h11.5M8.5 4.5 12 8 8.5 11.5" 
+                                  Width="24" Height="24" 
+                                  Foreground="#646470" 
+                                  Margin="15,0" 
+                                  VerticalAlignment="Center"/>
+                        
+                        <Border Grid.Column="2" Background="#26262B" Padding="12,10" CornerRadius="6" HorizontalAlignment="Stretch">
+                            <StackPanel Spacing="2" HorizontalAlignment="Center">
+                                <TextBlock Text="RECEIVER" FontSize="9" FontWeight="Bold" Foreground="#8E8E9F" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding Receiver}" FontSize="15" FontWeight="SemiBold" Foreground="#ECECF1" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Command Type -->
+                    <Grid Grid.Row="2" ColumnDefinitions="Auto, *" Margin="0,0,0,20">
+                        <TextBlock Grid.Column="0" Text="Command:" FontSize="13" Foreground="#8E8E9F" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <Border Grid.Column="1" Background="#3E2B5C" Padding="10,5" CornerRadius="4" HorizontalAlignment="Left">
+                            <TextBlock Text="{Binding CommandName}" FontSize="13" FontWeight="Bold" Foreground="#D5C7F2"/>
+                        </Border>
+                    </Grid>
+
+                    <!-- Key-Value Payload Details -->
+                    <Grid Grid.Row="3" RowDefinitions="Auto, *">
+                        <TextBlock Grid.Row="0" Text="Payload Properties" FontSize="13" FontWeight="SemiBold" Foreground="#ECECF1" Margin="0,0,0,8"/>
+                        
+                        <ScrollViewer Grid.Row="1" Background="#141417" CornerRadius="6">
+                            <ItemsControl ItemsSource="{Binding PayloadItems}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#26262B" BorderThickness="0,0,0,1" Padding="12,10">
+                                            <Grid ColumnDefinitions="*, 1.5*">
+                                                <TextBlock Grid.Column="0" Text="{Binding Key}" FontFamily="Consolas, monospace" Foreground="#86E0A3" FontWeight="Medium"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Value}" FontFamily="Consolas, monospace" Foreground="#ECECF1" TextWrapping="Wrap"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- Third Column: Simulation Stream -->
+            <Border Grid.Column="2" 
+                    Background="#1A1A1E" 
+                    BorderBrush="#2D2D34" 
+                    BorderThickness="1" 
+                    CornerRadius="8" 
+                    Padding="20" 
+                    Margin="10,0,0,0">
+                <Grid RowDefinitions="Auto, Auto, Auto, *">
+                    <!-- Heading & Control Button -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,15">
+                        <TextBlock Grid.Column="0" Text="Live Simulator Link" FontSize="14" FontWeight="SemiBold" Foreground="#ECECF1" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" 
+                                Content="{Binding SimulationButtonText}" 
+                                Command="{Binding ToggleSimulationCommand}" 
+                                Classes="accent"
+                                Padding="12,6"/>
+                    </Grid>
+
+                    <!-- Search Controls -->
+                    <Border Grid.Row="1" Background="#26262B" Padding="12" CornerRadius="6" Margin="0,0,0,15">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Search Query" FontSize="11" Foreground="#8E8E9F" FontWeight="Bold"/>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBox Grid.Column="0" 
+                                         Text="{Binding SearchQuery, Mode=TwoWay}"
+                                         PlaceholderText="e.g. Latitude > 34.3 or Callsign contains AF"
+                                         Background="#141417"
+                                         BorderBrush="#3D3D44"
+                                         Height="34"
+                                         Padding="8,6"
+                                         FontSize="12"/>
+                                <Button Grid.Column="1" 
+                                        Content="Clear" 
+                                        Command="{Binding ClearSearchCommand}"
+                                        VerticalAlignment="Center"
+                                        Margin="8,0,0,0"
+                                        Padding="12,6"
+                                        Background="#3D2024"
+                                        Foreground="#F88F92"/>
+                            </Grid>
+                            <TextBlock Text="Supports: Property Operator Value (e.g. Speed >= 450, State == RUNNING)" FontSize="10" Foreground="#646470" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Grid.Row="2" Text="Message Feed (DataBus Subscriptions)" FontSize="13" FontWeight="SemiBold" Foreground="#ECECF1" Margin="0,0,0,8"/>
+
+                    <!-- ListBox containing simulated messages -->
+                    <ListBox Grid.Row="3" 
+                             ItemsSource="{Binding SimulatedMessages}" 
+                             Background="#141417" 
+                             BorderBrush="#26262B" 
+                             BorderThickness="1"
+                             CornerRadius="6">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#26262B" BorderThickness="0,0,0,1" Padding="8,6">
+                                    <StackPanel Spacing="4">
+                                        <Grid ColumnDefinitions="Auto, *, Auto">
+                                            <!-- Time -->
+                                            <TextBlock Grid.Column="0" Text="{Binding Time}" FontSize="11" Foreground="#8E8E9F" FontFamily="Consolas, monospace"/>
+                                            <!-- Command Type Badge -->
+                                            <Border Grid.Column="1" Background="#2B3D5C" CornerRadius="3" Padding="6,2" Margin="8,0" HorizontalAlignment="Left">
+                                                <TextBlock Text="{Binding Type}" FontSize="10" FontWeight="Bold" Foreground="#A9C7F2"/>
+                                            </Border>
+                                            <!-- Route -->
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                                                <TextBlock Text="{Binding Sender}" FontSize="11" Foreground="#ECECF1" FontWeight="Medium"/>
+                                                <TextBlock Text="→" FontSize="11" Foreground="#8E8E9F"/>
+                                                <TextBlock Text="{Binding Receiver}" FontSize="11" Foreground="#ECECF1" FontWeight="Medium"/>
+                                            </StackPanel>
+                                        </Grid>
+                                        <!-- Details Summary -->
+                                        <TextBlock Text="{Binding Summary}" FontSize="12" Foreground="#86E0A3" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
