@@ -20,14 +20,16 @@ namespace MessageParser.Core.Filtering
             // Compile and cache getters for all filterable properties in the schema
             foreach (var prop in schema.FilterableProperties.Keys)
             {
+                string realPropName = string.Empty;
                 try
                 {
-                    var getter = CompileGetter(schema.MessageType, prop);
+                    realPropName = schema.PropertyNameMapping[prop];
+                    var getter = CompileGetter(schema.MessageType, realPropName);
                     _getters[(schema.MessageTypeName, prop)] = getter;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Failed to compile getter for property '{prop}' on type '{schema.MessageType.Name}': {ex.Message}");
+                    Console.WriteLine($"Failed to compile getter for property '{prop}' (real property '{realPropName}') on type '{schema.MessageType.Name}': {ex.Message}");
                 }
             }
 

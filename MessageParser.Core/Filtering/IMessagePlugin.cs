@@ -10,21 +10,54 @@ namespace MessageParser.Core.Filtering
         public string MessageTypeName { get; }
         public Type MessageType { get; }
         public IReadOnlyDictionary<string, Type> FilterableProperties { get; }
+        public IReadOnlyDictionary<string, string> PropertyNameMapping { get; }
         public Func<object, string> SummaryFormatter { get; }
         public Func<object, IEnumerable<PayloadField>> PayloadExtractor { get; }
 
         public MessageSchema(
             string messageTypeName,
             Type messageType,
-            IReadOnlyDictionary<string, Type> filterableProperties,
             Func<object, string> summaryFormatter,
             Func<object, IEnumerable<PayloadField>> payloadExtractor)
         {
             MessageTypeName = messageTypeName ?? throw new ArgumentNullException(nameof(messageTypeName));
             MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType));
-            FilterableProperties = filterableProperties ?? throw new ArgumentNullException(nameof(filterableProperties));
             SummaryFormatter = summaryFormatter ?? throw new ArgumentNullException(nameof(summaryFormatter));
             PayloadExtractor = payloadExtractor ?? throw new ArgumentNullException(nameof(payloadExtractor));
+
+            var filterableProperties = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
+            var propertyNameMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var prop in messageType.GetProperties())
+            {
+                var attr = (FilterableAttribute?)Attribute.GetCustomAttribute(prop, typeof(FilterableAttribute));
+                if (attr != null)
+                {
+                    string friendlyName = attr.FriendlyName;
+                    filterableProperties[friendlyName] = prop.PropertyType;
+                    propertyNameMapping[friendlyName] = prop.Name;
+
+                    if (!filterableProperties.ContainsKey(prop.Name))
+                    {
+                        filterableProperties[prop.Name] = prop.PropertyType;
+                        propertyNameMapping[prop.Name] = prop.Name;
+                    }
+                }
+            }
+
+            if (!filterableProperties.ContainsKey("Sender"))
+            {
+                filterableProperties["Sender"] = typeof(string);
+                propertyNameMapping["Sender"] = "Sender";
+            }
+            if (!filterableProperties.ContainsKey("Receiver"))
+            {
+                filterableProperties["Receiver"] = typeof(string);
+                propertyNameMapping["Receiver"] = "Receiver";
+            }
+
+            FilterableProperties = filterableProperties;
+            PropertyNameMapping = propertyNameMapping;
         }
     }
 

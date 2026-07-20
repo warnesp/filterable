@@ -14,18 +14,6 @@ namespace MessageParser.Plugins
             registry.RegisterSchema(new MessageSchema(
                 "AirTrack",
                 typeof(AirTrack),
-                new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase)
-                {
-                    { "Sender", typeof(string) },
-                    { "Receiver", typeof(string) },
-                    { "Callsign", typeof(string) },
-                    { "Latitude", typeof(double) },
-                    { "Longitude", typeof(double) },
-                    { "Altitude", typeof(double) },
-                    { "Speed", typeof(double) },
-                    { "Heading", typeof(double) },
-                    { "Squawk", typeof(string) }
-                },
                 msg =>
                 {
                     var air = (AirTrack)msg;
@@ -53,17 +41,6 @@ namespace MessageParser.Plugins
             registry.RegisterSchema(new MessageSchema(
                 "GroundTrack",
                 typeof(GroundTrack),
-                new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase)
-                {
-                    { "Sender", typeof(string) },
-                    { "Receiver", typeof(string) },
-                    { "UnitId", typeof(string) },
-                    { "Latitude", typeof(double) },
-                    { "Longitude", typeof(double) },
-                    { "Speed", typeof(double) },
-                    { "Heading", typeof(double) },
-                    { "Type", typeof(string) }
-                },
                 msg =>
                 {
                     var ground = (GroundTrack)msg;
@@ -90,15 +67,6 @@ namespace MessageParser.Plugins
             registry.RegisterSchema(new MessageSchema(
                 "HeartBeat",
                 typeof(HeartBeat),
-                new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase)
-                {
-                    { "Sender", typeof(string) },
-                    { "Receiver", typeof(string) },
-                    { "DeviceId", typeof(string) },
-                    { "Status", typeof(string) },
-                    { "Uptime", typeof(string) },
-                    { "Battery", typeof(string) }
-                },
                 msg =>
                 {
                     var hb = (HeartBeat)msg;
@@ -122,16 +90,6 @@ namespace MessageParser.Plugins
             registry.RegisterSchema(new MessageSchema(
                 "SelfLocation",
                 typeof(SelfLocation),
-                new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase)
-                {
-                    { "Sender", typeof(string) },
-                    { "Receiver", typeof(string) },
-                    { "Latitude", typeof(double) },
-                    { "Longitude", typeof(double) },
-                    { "Altitude", typeof(double) },
-                    { "GpsLock", typeof(string) },
-                    { "Precision", typeof(string) }
-                },
                 msg =>
                 {
                     var self = (SelfLocation)msg;
@@ -157,16 +115,6 @@ namespace MessageParser.Plugins
             registry.RegisterSchema(new MessageSchema(
                 "GeneratorStatus",
                 typeof(GeneratorStatus),
-                new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase)
-                {
-                    { "Sender", typeof(string) },
-                    { "Receiver", typeof(string) },
-                    { "GenId", typeof(string) },
-                    { "State", typeof(string) },
-                    { "Load", typeof(string) },
-                    { "FuelLevel", typeof(string) },
-                    { "Temperature", typeof(string) }
-                },
                 msg =>
                 {
                     var gen = (GeneratorStatus)msg;
