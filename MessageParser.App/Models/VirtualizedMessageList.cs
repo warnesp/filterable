@@ -284,11 +284,12 @@ namespace MessageParser.App.Models
         /// <inheritdoc/>
         public bool Contains(object? value)
         {
-            if (value is SimulatedMessageItemViewModel vm)
+            if (value is SimulatedMessageItemViewModel vm && vm.Message != null)
             {
-                for (int i = 0; i < Count; i++)
+                for (int i = 0; i < _filteredIndices.Count; i++)
                 {
-                    if (this[i] == vm) return true;
+                    int sourceIndex = _filteredIndices[i];
+                    if (ReferenceEquals(_allMessages[sourceIndex], vm.Message)) return true;
                 }
             }
             return false;
@@ -297,11 +298,12 @@ namespace MessageParser.App.Models
         /// <inheritdoc/>
         public int IndexOf(object? value)
         {
-            if (value is SimulatedMessageItemViewModel vm)
+            if (value is SimulatedMessageItemViewModel vm && vm.Message != null)
             {
-                for (int i = 0; i < Count; i++)
+                for (int i = 0; i < _filteredIndices.Count; i++)
                 {
-                    if (this[i] == vm) return i;
+                    int sourceIndex = _filteredIndices[i];
+                    if (ReferenceEquals(_allMessages[sourceIndex], vm.Message)) return i;
                 }
             }
             return -1;

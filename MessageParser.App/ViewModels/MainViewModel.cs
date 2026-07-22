@@ -445,7 +445,7 @@ public class PayloadItemViewModel
     }
 }
 
-public class SimulatedMessageItemViewModel
+public class SimulatedMessageItemViewModel : IEquatable<SimulatedMessageItemViewModel>
 {
     public string Time { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
@@ -453,4 +453,15 @@ public class SimulatedMessageItemViewModel
     public string Receiver { get; set; } = string.Empty;
     public string Summary { get; set; } = string.Empty;
     public MessageBase Message { get; set; } = null!;
+
+    public bool Equals(SimulatedMessageItemViewModel? other)
+    {
+        if (other is null) return false;
+        if (ReferenceEquals(this, other)) return true;
+        return ReferenceEquals(Message, other.Message);
+    }
+
+    public override bool Equals(object? obj) => Equals(obj as SimulatedMessageItemViewModel);
+
+    public override int GetHashCode() => Message != null ? Message.GetHashCode() : 0;
 }
