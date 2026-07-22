@@ -15,6 +15,26 @@ namespace MessageParser.Core.Filtering
         public Func<object, IEnumerable<PayloadField>> PayloadExtractor { get; }
 
         public MessageSchema(
+            IFilterInfo filterInfo,
+            Func<object, string> summaryFormatter,
+            Func<object, IEnumerable<PayloadField>> payloadExtractor)
+        {
+            if (filterInfo == null) throw new ArgumentNullException(nameof(filterInfo));
+            MessageTypeName = filterInfo.MessageTypeName;
+            MessageType = filterInfo.MessageType;
+            FilterableProperties = filterInfo.FilterableProperties;
+            SummaryFormatter = summaryFormatter ?? throw new ArgumentNullException(nameof(summaryFormatter));
+            PayloadExtractor = payloadExtractor ?? throw new ArgumentNullException(nameof(payloadExtractor));
+
+            var propertyNameMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kvp in filterInfo.FilterableProperties)
+            {
+                propertyNameMapping[kvp.Key] = kvp.Key;
+            }
+            PropertyNameMapping = propertyNameMapping;
+        }
+
+        public MessageSchema(
             string messageTypeName,
             Type messageType,
             Func<object, string> summaryFormatter,
@@ -65,6 +85,8 @@ namespace MessageParser.Core.Filtering
     {
         void RegisterSchema(MessageSchema schema);
         void RegisterParser(string command, Func<ParsedMessage, object> parser);
+        void RegisterEvaluator(IMessageEvaluator evaluator);
+        bool EvaluateFilter(object message, string propertyName, Func<object?, bool> predicate);
     }
 
     public interface IMessagePlugin

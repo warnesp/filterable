@@ -12,8 +12,7 @@ namespace MessageParser.Plugins
         {
             // AirTrack
             registry.RegisterSchema(new MessageSchema(
-                "AirTrack",
-                typeof(AirTrack),
+                new AirTrackFilterInfo(),
                 msg =>
                 {
                     var air = (AirTrack)msg;
@@ -39,8 +38,7 @@ namespace MessageParser.Plugins
 
             // GroundTrack
             registry.RegisterSchema(new MessageSchema(
-                "GroundTrack",
-                typeof(GroundTrack),
+                new GroundTrackFilterInfo(),
                 msg =>
                 {
                     var ground = (GroundTrack)msg;
@@ -65,8 +63,7 @@ namespace MessageParser.Plugins
 
             // HeartBeat
             registry.RegisterSchema(new MessageSchema(
-                "HeartBeat",
-                typeof(HeartBeat),
+                new HeartBeatFilterInfo(),
                 msg =>
                 {
                     var hb = (HeartBeat)msg;
@@ -88,8 +85,7 @@ namespace MessageParser.Plugins
 
             // SelfLocation
             registry.RegisterSchema(new MessageSchema(
-                "SelfLocation",
-                typeof(SelfLocation),
+                new SelfLocationFilterInfo(),
                 msg =>
                 {
                     var self = (SelfLocation)msg;
@@ -113,8 +109,7 @@ namespace MessageParser.Plugins
 
             // GeneratorStatus
             registry.RegisterSchema(new MessageSchema(
-                "GeneratorStatus",
-                typeof(GeneratorStatus),
+                new GeneratorStatusFilterInfo(),
                 msg =>
                 {
                     var gen = (GeneratorStatus)msg;
@@ -135,6 +130,12 @@ namespace MessageParser.Plugins
             ));
             registry.RegisterParser("GENERATOR_STATUS", parsed => parsed.ToTypedMessage()!);
             registry.RegisterParser("GENERATORSTATUS", parsed => parsed.ToTypedMessage()!);
+
+            // Register Evaluators
+            foreach (var evaluator in GeneratedMessageEvaluators.GetAll())
+            {
+                registry.RegisterEvaluator(evaluator);
+            }
         }
     }
 }

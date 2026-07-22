@@ -23,13 +23,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private readonly TestMessageLink _messageLink = new();
     private readonly List<IFilterInfo> _discoveredFilterInfos = new();
     
-    private readonly List<IFilterable> _allMessages = new();
+    private readonly List<MessageBase> _allMessages = new();
     private readonly List<int> _filteredIndices = new();
     private readonly StringPool _stringPool = new();
     private readonly MessageRegistry _messageRegistry = new();
     private readonly HashSet<string> _publishedMessageTypes = new(StringComparer.OrdinalIgnoreCase);
 
-    private IDisposable? _filterableSubscription;
+    private IDisposable? _messageSubscription;
     private IDisposable? _filterInfoSubscription;
 
     [ObservableProperty]
@@ -69,8 +69,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         // Initialize virtualized collection
         _simulatedMessages = new VirtualizedMessageList(_allMessages, _filteredIndices, _messageRegistry);
 
-        // Subscribe to IFilterable (decorated messages) and IFilterInfo (message metadata)
-        _filterableSubscription = _dataBus.Subscribe<IFilterable>(OnFilterableMessageReceived);
+        // Subscribe to MessageBase (native messages) and IFilterInfo (message metadata)
+        _messageSubscription = _dataBus.Subscribe<MessageBase>(OnMessageReceived);
         _filterInfoSubscription = _dataBus.Subscribe<IFilterInfo>(OnFilterInfoReceived);
 
         // Instantiate and register default plugin (statically for this demo)
@@ -94,14 +94,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 {
                     var senderInterned = _stringPool.GetOrAdd(typedMessage.Sender);
                     var receiverInterned = _stringPool.GetOrAdd(typedMessage.Receiver);
-                    var typeInterned = _stringPool.GetOrAdd(schema.MessageTypeName);
 
                     typedMessage.Sender = senderInterned;
                     typedMessage.Receiver = receiverInterned;
 
-                    var filterable = GeneratedFilterableFactory.CreateWrapper(typedMessage);
-
-                    _dataBus.Publish<IFilterable>(filterable);
+                    _dataBus.Publish<MessageBase>(typedMessage);
                 }
             }
         }
@@ -136,15 +133,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         AvailablePropertiesHint = string.Join(", ", properties);
     }
 
-    private void OnFilterableMessageReceived(IFilterable filterable)
+    private void OnMessageReceived(MessageBase message)
     {
         Dispatcher.UIThread.Post(() =>
         {
+            string typeName = message.GetType().Name;
             lock (_publishedMessageTypes)
             {
-                if (_publishedMessageTypes.Add(filterable.MessageTypeName))
+                if (_publishedMessageTypes.Add(typeName))
                 {
-                    var schema = _messageRegistry.GetSchema(filterable.MessageTypeName);
+                    var schema = _messageRegistry.GetSchema(typeName);
                     if (schema != null)
                     {
                         _dataBus.Publish<IFilterInfo>(schema);
@@ -154,10 +152,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
             lock (_allMessages)
             {
-                _allMessages.Add(filterable);
+                _allMessages.Add(message);
                 int newIndex = _allMessages.Count - 1;
 
-                if (MatchesFilter(filterable))
+                if (MatchesFilter(message))
                 {
                     _filteredIndices.Add(newIndex);
                     int filteredIndex = _filteredIndices.Count - 1;
@@ -167,14 +165,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         });
     }
 
-    private bool MatchesFilter(IFilterable filterable)
+    private bool MatchesFilter(MessageBase message)
     {
         if (string.IsNullOrWhiteSpace(SearchQuery)) return true;
 
         var query = QueryParser.Parse(SearchQuery);
         if (query.IsValid)
         {
-            var filterInfo = _discoveredFilterInfos.FirstOrDefault(fi => fi.MessageTypeName == filterable.MessageTypeName);
+            string typeName = message.GetType().Name;
+            var filterInfo = _discoveredFilterInfos.FirstOrDefault(fi => fi.MessageTypeName == typeName);
             if (filterInfo == null) return false;
 
             var propEntry = filterInfo.FilterableProperties.FirstOrDefault(p => string.Equals(p.Key, query.PropertyName, StringComparison.OrdinalIgnoreCase));
@@ -182,9 +181,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             {
                 object? fallbackVal = query.PropertyName.ToUpperInvariant() switch
                 {
-                    "SENDER" => filterable.Sender,
-                    "RECEIVER" => filterable.Receiver,
-                    "MESSAGETYPE" or "TYPE" => filterable.MessageTypeName,
+                    "SENDER" => message.Sender,
+                    "RECEIVER" => message.Receiver,
+                    "MESSAGETYPE" or "TYPE" => typeName,
                     _ => null
                 };
                 if (fallbackVal is string fs)
@@ -197,29 +196,30 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
             var propType = propEntry.Value;
             var predicate = GetPredicateForOperator(propType, query.Operator, query.Value);
-            return filterable.ApplyFilter(propEntry.Key, predicate);
+            return _messageRegistry.EvaluateFilter(message, propEntry.Key, predicate);
         }
         else
         {
             string text = SearchQuery.Trim();
-            if (filterable.Sender.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                filterable.Receiver.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                filterable.MessageTypeName.Contains(text, StringComparison.OrdinalIgnoreCase))
+            string typeName = message.GetType().Name;
+            if (message.Sender.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                message.Receiver.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                typeName.Contains(text, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
 
-            var schema = _messageRegistry.GetSchema(filterable.MessageTypeName);
+            var schema = _messageRegistry.GetSchema(typeName);
             if (schema != null)
             {
-                var summary = schema.SummaryFormatter(filterable.WrappedMessage);
+                var summary = schema.SummaryFormatter(message);
                 return summary.Contains(text, StringComparison.OrdinalIgnoreCase);
             }
             return false;
         }
     }
 
-    private Func<IFilterable, bool> CompileFilter(string queryText)
+    private Func<MessageBase, bool> CompileFilter(string queryText)
     {
         if (string.IsNullOrWhiteSpace(queryText))
         {
@@ -229,9 +229,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         var query = QueryParser.Parse(queryText);
         if (query.IsValid)
         {
-            return filterable =>
+            return message =>
             {
-                var info = _discoveredFilterInfos.FirstOrDefault(fi => fi.MessageTypeName == filterable.MessageTypeName);
+                string typeName = message.GetType().Name;
+                var info = _discoveredFilterInfos.FirstOrDefault(fi => fi.MessageTypeName == typeName);
                 if (info == null) return false;
 
                 var propEntry = info.FilterableProperties.FirstOrDefault(p => string.Equals(p.Key, query.PropertyName, StringComparison.OrdinalIgnoreCase));
@@ -239,9 +240,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 {
                     object? fallbackVal = query.PropertyName.ToUpperInvariant() switch
                     {
-                        "SENDER" => filterable.Sender,
-                        "RECEIVER" => filterable.Receiver,
-                        "MESSAGETYPE" or "TYPE" => filterable.MessageTypeName,
+                        "SENDER" => message.Sender,
+                        "RECEIVER" => message.Receiver,
+                        "MESSAGETYPE" or "TYPE" => typeName,
                         _ => null
                     };
                     if (fallbackVal is string fs)
@@ -254,25 +255,26 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
                 var propType = propEntry.Value;
                 var predicate = GetPredicateForOperator(propType, query.Operator, query.Value);
-                return filterable.ApplyFilter(propEntry.Key, predicate);
+                return _messageRegistry.EvaluateFilter(message, propEntry.Key, predicate);
             };
         }
         else
         {
             string text = queryText.Trim();
-            return filterable =>
+            return message =>
             {
-                if (filterable.Sender.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                    filterable.Receiver.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                    filterable.MessageTypeName.Contains(text, StringComparison.OrdinalIgnoreCase))
+                string typeName = message.GetType().Name;
+                if (message.Sender.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                    message.Receiver.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                    typeName.Contains(text, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
 
-                var schema = _messageRegistry.GetSchema(filterable.MessageTypeName);
+                var schema = _messageRegistry.GetSchema(typeName);
                 if (schema != null)
                 {
-                    var summary = schema.SummaryFormatter(filterable.WrappedMessage);
+                    var summary = schema.SummaryFormatter(message);
                     return summary.Contains(text, StringComparison.OrdinalIgnoreCase);
                 }
                 return false;
@@ -390,7 +392,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         Receiver = value.Receiver;
         CommandName = value.Type;
 
-        var msg = value.Filterable.WrappedMessage;
+        var msg = value.Message;
         var schema = _messageRegistry.GetSchema(value.Type);
         if (schema != null)
         {
@@ -432,7 +434,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
-        _filterableSubscription?.Dispose();
+        _messageSubscription?.Dispose();
         _filterInfoSubscription?.Dispose();
         _messageLink.Stop();
     }
@@ -457,6 +459,5 @@ public class SimulatedMessageItemViewModel
     public string Sender { get; set; } = string.Empty;
     public string Receiver { get; set; } = string.Empty;
     public string Summary { get; set; } = string.Empty;
-    public IFilterable Filterable { get; set; } = null!;
+    public MessageBase Message { get; set; } = null!;
 }
-

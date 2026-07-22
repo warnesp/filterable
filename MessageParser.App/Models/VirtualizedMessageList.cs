@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using MessageParser.Core;
 using MessageParser.Core.Filtering;
+using MessageParser.Core.Messages;
 using MessageParser.App.ViewModels;
 
 namespace MessageParser.App.Models
@@ -63,14 +64,14 @@ namespace MessageParser.App.Models
 
     public class VirtualizedMessageList : IList, IReadOnlyList<SimulatedMessageItemViewModel>, INotifyCollectionChanged
     {
-        private readonly IReadOnlyList<IFilterable> _allMessages;
+        private readonly IReadOnlyList<MessageBase> _allMessages;
         private readonly IReadOnlyList<int> _filteredIndices;
         private readonly MessageRegistry _registry;
         private readonly LruCache<int, SimulatedMessageItemViewModel> _cache = new(100);
 
         public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
-        public VirtualizedMessageList(IReadOnlyList<IFilterable> allMessages, IReadOnlyList<int> filteredIndices, MessageRegistry registry)
+        public VirtualizedMessageList(IReadOnlyList<MessageBase> allMessages, IReadOnlyList<int> filteredIndices, MessageRegistry registry)
         {
             _allMessages = allMessages ?? throw new ArgumentNullException(nameof(allMessages));
             _filteredIndices = filteredIndices ?? throw new ArgumentNullException(nameof(filteredIndices));
@@ -106,19 +107,20 @@ namespace MessageParser.App.Models
                     return cachedVm;
                 }
 
-                var filterable = _allMessages[sourceIndex];
-                var schema = _registry.GetSchema(filterable.MessageTypeName);
+                var message = _allMessages[sourceIndex];
+                string typeName = message.GetType().Name;
+                var schema = _registry.GetSchema(typeName);
 
-                string summary = schema?.SummaryFormatter(filterable.WrappedMessage) ?? "Unknown message type";
+                string summary = schema?.SummaryFormatter(message) ?? "Unknown message type";
 
                 var vm = new SimulatedMessageItemViewModel
                 {
-                    Time = filterable.ReceivedTime.ToLocalTime().ToString("HH:mm:ss.fff"),
-                    Type = filterable.MessageTypeName,
-                    Sender = filterable.Sender,
-                    Receiver = filterable.Receiver,
+                    Time = message.ReceivedTime.ToLocalTime().ToString("HH:mm:ss.fff"),
+                    Type = typeName,
+                    Sender = message.Sender,
+                    Receiver = message.Receiver,
                     Summary = summary,
-                    Filterable = filterable
+                    Message = message
                 };
 
                 _cache.Add(sourceIndex, vm);

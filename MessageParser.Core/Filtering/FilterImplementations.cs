@@ -17,23 +17,4 @@ namespace MessageParser.Core.Filtering
             FilterableProperties = properties;
         }
     }
-
-    public abstract class FilterableBase<T> : IFilterable where T : MessageBase
-    {
-        public T TypedMessage { get; }
-        public object WrappedMessage => TypedMessage;
-        public Type MessageType => typeof(T);
-        public string MessageTypeName => typeof(T).Name;
-        public DateTime ReceivedTime => TypedMessage.ReceivedTime;
-        public string Sender => TypedMessage.Sender;
-        public string Receiver => TypedMessage.Receiver;
-
-        protected FilterableBase(T message)
-        {
-            TypedMessage = message ?? throw new ArgumentNullException(nameof(message));
-        }
-
-        public abstract bool ApplyFilter(string propertyName, Func<object?, bool> predicate);
-    }
-
 }
