@@ -10,30 +10,46 @@ using MessageParser.App.ViewModels;
 namespace MessageParser.App.Models
 {
     /// <summary>
-    /// A generic Least-Recently-Used (LRU) Cache backed by a <see cref="Dictionary{TKey, TValue}"/>
-    /// and a doubly-linked list (<see cref="LinkedList{T}"/>).
-    /// Provides O(1) lookups, additions, and evictions when capacity is reached.
+    /// An allocation-free, node-recycling Least-Recently-Used (LRU) Cache.
+    /// Uses a custom doubly-linked list of internal <see cref="CacheNode"/> instances and a dictionary for O(1) lookups.
+    /// Once maximum capacity is reached, evicted tail nodes are recycled in-place, eliminating GC allocations during cache operations.
     /// </summary>
     /// <typeparam name="TKey">The key type for cached entries.</typeparam>
     /// <typeparam name="TValue">The value type for cached entries.</typeparam>
     public class LruCache<TKey, TValue> where TKey : notnull
     {
+        private class CacheNode
+        {
+            public TKey Key;
+            public TValue Value;
+            public CacheNode? Next;
+            public CacheNode? Prev;
+
+            public CacheNode(TKey key, TValue value)
+            {
+                Key = key;
+                Value = value;
+            }
+        }
+
         private readonly int _capacity;
-        private readonly Dictionary<TKey, LinkedListNode<KeyValuePair<TKey, TValue>>> _map = new();
-        private readonly LinkedList<KeyValuePair<TKey, TValue>> _list = new();
+        private readonly Dictionary<TKey, CacheNode> _map;
+        private CacheNode? _head;
+        private CacheNode? _tail;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LruCache{TKey, TValue}"/> class with the specified capacity limit.
         /// </summary>
-        /// <param name="capacity">Maximum number of items the cache will hold before evicting least-recently used items.</param>
+        /// <param name="capacity">Maximum number of items the cache will hold before recycling least-recently used nodes.</param>
         public LruCache(int capacity)
         {
             if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity), "Capacity must be greater than zero.");
             _capacity = capacity;
+            _map = new Dictionary<TKey, CacheNode>(capacity);
         }
 
         /// <summary>
-        /// Attempts to retrieve a cached value by key. If found, moves the entry to the front of the LRU list.
+        /// Attempts to retrieve a cached value by key. If found, moves the node to the front of the LRU list.
         /// </summary>
         /// <param name="key">The key to look up.</param>
         /// <param name="value">When found, contains the cached value; otherwise, default.</param>
@@ -42,9 +58,8 @@ namespace MessageParser.App.Models
         {
             if (_map.TryGetValue(key, out var node))
             {
-                _list.Remove(node);
-                _list.AddFirst(node);
-                value = node.Value.Value;
+                MoveToHead(node);
+                value = node.Value;
                 return true;
             }
             value = default!;
@@ -52,7 +67,8 @@ namespace MessageParser.App.Models
         }
 
         /// <summary>
-        /// Adds or updates a key/value pair in the cache. If capacity is exceeded, the least-recently used entry is evicted.
+        /// Adds or updates a key/value pair in the cache.
+        /// If capacity is reached, the evicted tail node is recycled in-place without heap allocations.
         /// </summary>
         /// <param name="key">The cache key.</param>
         /// <param name="value">The value to cache.</param>
@@ -60,22 +76,78 @@ namespace MessageParser.App.Models
         {
             if (_map.TryGetValue(key, out var node))
             {
-                _list.Remove(node);
-                _map.Remove(key);
-            }
-            else if (_map.Count >= _capacity)
-            {
-                var lastNode = _list.Last;
-                if (lastNode != null)
-                {
-                    _list.RemoveLast();
-                    _map.Remove(lastNode.Value.Key);
-                }
+                node.Value = value;
+                MoveToHead(node);
+                return;
             }
 
-            var newNode = new LinkedListNode<KeyValuePair<TKey, TValue>>(new KeyValuePair<TKey, TValue>(key, value));
-            _list.AddFirst(newNode);
-            _map[key] = newNode;
+            if (_map.Count >= _capacity && _tail != null)
+            {
+                // Recycle the tail node to avoid GC allocations
+                node = _tail;
+                _map.Remove(node.Key);
+
+                node.Key = key;
+                node.Value = value;
+
+                _map[key] = node;
+                MoveToHead(node);
+            }
+            else
+            {
+                // Cache not yet at capacity
+                node = new CacheNode(key, value);
+                _map[key] = node;
+                AddToHead(node);
+            }
+        }
+
+        private void MoveToHead(CacheNode node)
+        {
+            if (node == _head) return;
+
+            // Unlink node from current position
+            if (node.Prev != null) node.Prev.Next = node.Next;
+            if (node.Next != null) node.Next.Prev = node.Prev;
+
+            if (node == _tail)
+            {
+                _tail = node.Prev;
+            }
+
+            // Link at head
+            node.Next = _head;
+            node.Prev = null;
+
+            if (_head != null)
+            {
+                _head.Prev = node;
+            }
+
+            _head = node;
+
+            if (_tail == null)
+            {
+                _tail = node;
+            }
+        }
+
+        private void AddToHead(CacheNode node)
+        {
+            node.Next = _head;
+            node.Prev = null;
+
+            if (_head != null)
+            {
+                _head.Prev = node;
+            }
+
+            _head = node;
+
+            if (_tail == null)
+            {
+                _tail = node;
+            }
         }
 
         /// <summary>
@@ -84,7 +156,8 @@ namespace MessageParser.App.Models
         public void Clear()
         {
             _map.Clear();
-            _list.Clear();
+            _head = null;
+            _tail = null;
         }
     }
 
