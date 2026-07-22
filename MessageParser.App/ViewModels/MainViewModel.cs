@@ -25,7 +25,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     
     private readonly List<MessageBase> _allMessages = new();
     private readonly List<int> _filteredIndices = new();
-    private readonly StringPool _stringPool = new();
     private readonly MessageRegistry _messageRegistry = new();
     private readonly HashSet<string> _publishedMessageTypes = new(StringComparer.OrdinalIgnoreCase);
 
@@ -92,12 +91,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 var schema = _messageRegistry.GetSchema(typedMessage.GetType().Name);
                 if (schema != null)
                 {
-                    var senderInterned = _stringPool.GetOrAdd(typedMessage.Sender);
-                    var receiverInterned = _stringPool.GetOrAdd(typedMessage.Receiver);
-
-                    typedMessage.Sender = senderInterned;
-                    typedMessage.Receiver = receiverInterned;
-
                     _dataBus.Publish<MessageBase>(typedMessage);
                 }
             }

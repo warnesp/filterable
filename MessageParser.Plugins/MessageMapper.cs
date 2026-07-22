@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using MessageParser.Core;
 using MessageParser.Core.Messages;
@@ -20,13 +21,13 @@ namespace MessageParser.Plugins
                         Sender = parsed.Sender,
                         Receiver = parsed.Receiver,
                         Command = parsed.Command,
-                        Callsign = parsed.Payload.GetValueOrDefault("callsign"),
+                        Callsign = parsed.Payload.GetValueOrDefault("callsign") ?? string.Empty,
                         Latitude = ParseDouble(parsed.Payload.GetValueOrDefault("lat")),
                         Longitude = ParseDouble(parsed.Payload.GetValueOrDefault("lon")),
                         Altitude = ParseDouble(parsed.Payload.GetValueOrDefault("alt")),
                         Speed = ParseDouble(parsed.Payload.GetValueOrDefault("speed")),
                         Heading = ParseDouble(parsed.Payload.GetValueOrDefault("heading")),
-                        Squawk = parsed.Payload.GetValueOrDefault("squawk")
+                        Squawk = parsed.Payload.GetValueOrDefault("squawk") ?? string.Empty
                     };
 
                 case "GROUND_TRACK":
@@ -36,12 +37,12 @@ namespace MessageParser.Plugins
                         Sender = parsed.Sender,
                         Receiver = parsed.Receiver,
                         Command = parsed.Command,
-                        UnitId = parsed.Payload.GetValueOrDefault("unit_id"),
+                        UnitId = parsed.Payload.GetValueOrDefault("unit_id") ?? string.Empty,
                         Latitude = ParseDouble(parsed.Payload.GetValueOrDefault("lat")),
                         Longitude = ParseDouble(parsed.Payload.GetValueOrDefault("lon")),
                         Speed = ParseDouble(parsed.Payload.GetValueOrDefault("speed")),
                         Heading = ParseDouble(parsed.Payload.GetValueOrDefault("heading")),
-                        Type = parsed.Payload.GetValueOrDefault("type")
+                        Type = parsed.Payload.GetValueOrDefault("type") ?? string.Empty
                     };
 
                 case "HEARTBEAT":
@@ -50,10 +51,10 @@ namespace MessageParser.Plugins
                         Sender = parsed.Sender,
                         Receiver = parsed.Receiver,
                         Command = parsed.Command,
-                        DeviceId = parsed.Payload.GetValueOrDefault("device_id"),
-                        Status = parsed.Payload.GetValueOrDefault("status"),
-                        Uptime = parsed.Payload.GetValueOrDefault("uptime"),
-                        Battery = parsed.Payload.GetValueOrDefault("battery")
+                        DeviceId = parsed.Payload.GetValueOrDefault("device_id") ?? string.Empty,
+                        Status = parsed.Payload.GetValueOrDefault("status") ?? string.Empty,
+                        Uptime = parsed.Payload.GetValueOrDefault("uptime") ?? string.Empty,
+                        Battery = parsed.Payload.GetValueOrDefault("battery") ?? string.Empty
                     };
 
                 case "SELF_LOCATION":
@@ -66,8 +67,8 @@ namespace MessageParser.Plugins
                         Latitude = ParseDouble(parsed.Payload.GetValueOrDefault("lat")),
                         Longitude = ParseDouble(parsed.Payload.GetValueOrDefault("lon")),
                         Altitude = ParseDouble(parsed.Payload.GetValueOrDefault("alt")),
-                        GpsLock = parsed.Payload.GetValueOrDefault("gps_lock"),
-                        Precision = parsed.Payload.GetValueOrDefault("precision")
+                        GpsLock = parsed.Payload.GetValueOrDefault("gps_lock") ?? string.Empty,
+                        Precision = parsed.Payload.GetValueOrDefault("precision") ?? string.Empty
                     };
 
                 case "GENERATOR_STATUS":
@@ -77,11 +78,11 @@ namespace MessageParser.Plugins
                         Sender = parsed.Sender,
                         Receiver = parsed.Receiver,
                         Command = parsed.Command,
-                        GenId = parsed.Payload.GetValueOrDefault("gen_id"),
-                        State = parsed.Payload.GetValueOrDefault("state"),
-                        Load = parsed.Payload.GetValueOrDefault("load"),
-                        FuelLevel = parsed.Payload.GetValueOrDefault("fuel"),
-                        Temperature = parsed.Payload.GetValueOrDefault("temp")
+                        GenId = parsed.Payload.GetValueOrDefault("gen_id") ?? string.Empty,
+                        State = parsed.Payload.GetValueOrDefault("state") ?? string.Empty,
+                        Load = parsed.Payload.GetValueOrDefault("load") ?? string.Empty,
+                        FuelLevel = parsed.Payload.GetValueOrDefault("fuel") ?? string.Empty,
+                        Temperature = parsed.Payload.GetValueOrDefault("temp") ?? string.Empty
                     };
 
                 default:
@@ -96,11 +97,6 @@ namespace MessageParser.Plugins
                 return result;
             }
             return 0.0;
-        }
-
-        private static string GetValueOrDefault(this System.Collections.Generic.Dictionary<string, string> dict, string key)
-        {
-            return dict.TryGetValue(key, out var val) ? val : string.Empty;
         }
     }
 }
