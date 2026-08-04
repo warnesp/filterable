@@ -9,10 +9,13 @@ using CommunityToolkit.Mvvm.Input;
 using MessageParser.Core;
 using MessageParser.Core.Bus;
 using MessageParser.Core.Messages;
+using MessageParser.Core.Rules;
 using MessageParser.Core.Simulation;
 using MessageParser.Core.Filtering;
 using MessageParser.App.Models;
 using MessageParser.Plugins;
+using MessageParser.Plugins.Rules;
+using MessageParser.Plugins.Simulation;
 using Avalonia.Threading;
 
 namespace MessageParser.App.ViewModels;
@@ -58,6 +61,30 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     private string _availablePropertiesHint = "Sender, Receiver";
 
+    // Link State Machine & Rules Engine UI Bindings
+    [ObservableProperty]
+    private string _linkStateText = "CONNECTED";
+
+    [ObservableProperty]
+    private string _linkStateColor = "#2ECC71"; // Green
+
+    [ObservableProperty]
+    private string _linkStateReason = "Link is fully operational.";
+
+    [ObservableProperty]
+    private string _simulatedClockText = DateTime.UtcNow.ToString("HH:mm:ss");
+
+    [ObservableProperty]
+    private string _timeScaleText = "1.0x Speed";
+
+    [ObservableProperty]
+    private bool _isHeartbeatLossSimulated;
+
+    [ObservableProperty]
+    private double _generatorFuelPercent = 85.0;
+
+    public ObservableCollection<RuleViewModel> Rules { get; } = new();
+    public ObservableCollection<string> RuleLogs { get; } = new();
     public ObservableCollection<PayloadItemViewModel> PayloadItems { get; } = new();
 
     [ObservableProperty]
@@ -76,8 +103,22 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         var basePlugin = new BaseMessagesPlugin();
         basePlugin.Initialize(_messageRegistry);
 
-        // Bind simulator event
+        // Bind simulator events
         _messageLink.RawMessageReceived += OnSimulatorRawMessageReceived;
+        _messageLink.MessageReceived += OnSimulatorMessageReceived;
+
+        // Bind State Machine events
+        _messageLink.StateMachine.StateChanged += OnLinkStateChanged;
+        _messageLink.StateMachine.RuleLogAdded += OnRuleLogAdded;
+        _messageLink.TimeService.TimeAdvanced += OnTimeAdvanced;
+
+        // Load Rules into ViewModel collection
+        foreach (var rule in _messageLink.StateMachine.RuleEngine.Rules)
+        {
+            Rules.Add(new RuleViewModel(rule));
+        }
+
+        UpdateLinkStateDisplay(_messageLink.StateMachine.CurrentState, "Link active.");
     }
 
     private void OnSimulatorRawMessageReceived(object? sender, string rawMessage)
@@ -95,6 +136,101 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 }
             }
         }
+    }
+
+    private void OnSimulatorMessageReceived(object? sender, MessageBase message)
+    {
+        _dataBus.Publish<MessageBase>(message);
+    }
+
+    private void OnLinkStateChanged(object? sender, LinkStateChangedEventArgs e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            UpdateLinkStateDisplay(e.NewState, e.Reason);
+            RuleLogs.Insert(0, $"[{e.Timestamp:HH:mm:ss}] State -> {e.NewState.ToString().ToUpper()}: {e.Reason}");
+            if (RuleLogs.Count > 50) RuleLogs.RemoveAt(RuleLogs.Count - 1);
+        });
+    }
+
+    private void OnRuleLogAdded(object? sender, RuleLogEventArgs e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            RuleLogs.Insert(0, $"[{e.Timestamp:HH:mm:ss}] [{e.RuleName}] {e.Message}");
+            if (RuleLogs.Count > 50) RuleLogs.RemoveAt(RuleLogs.Count - 1);
+        });
+    }
+
+    private void OnTimeAdvanced(object? sender, DateTime simTime)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            SimulatedClockText = simTime.ToString("HH:mm:ss");
+        });
+    }
+
+    private void UpdateLinkStateDisplay(MessageLinkState state, string reason)
+    {
+        LinkStateText = state.ToString().ToUpper();
+        LinkStateReason = reason;
+
+        LinkStateColor = state switch
+        {
+            MessageLinkState.Connected => "#2ECC71", // Green
+            MessageLinkState.Degraded => "#F39C12",  // Orange/Yellow
+            MessageLinkState.Closed => "#E74C3C",    // Red
+            _ => "#95A5A6"
+        };
+    }
+
+    partial void OnIsHeartbeatLossSimulatedChanged(bool value)
+    {
+        _messageLink.IsReceivingHeartbeats = !value;
+        string statusText = value ? "Simulating lost incoming heartbeats..." : "Restored incoming heartbeats.";
+        RuleLogs.Insert(0, $"[{_messageLink.TimeService.Now:HH:mm:ss}] {statusText}");
+    }
+
+    partial void OnGeneratorFuelPercentChanged(double value)
+    {
+        _messageLink.GeneratorFuelPercent = value;
+        _messageLink.StateMachine.SetFuelLevel(value);
+    }
+
+    [RelayCommand]
+    private void SetTimeScale(string scaleFactorStr)
+    {
+        if (double.TryParse(scaleFactorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double scale))
+        {
+            _messageLink.TimeService.TimeScale = scale;
+            TimeScaleText = scale == 1.0 ? "1.0x Speed" : $"{scale:F1}x Speed";
+            RuleLogs.Insert(0, $"[{_messageLink.TimeService.Now:HH:mm:ss}] Clock speed set to {TimeScaleText}");
+        }
+    }
+
+    [RelayCommand]
+    private void StepTimeSeconds(string secondsStr)
+    {
+        if (double.TryParse(secondsStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double sec))
+        {
+            _messageLink.TimeService.AdvanceTime(TimeSpan.FromSeconds(sec));
+            _messageLink.StateMachine.EvaluateStateAndRules();
+            RuleLogs.Insert(0, $"[{_messageLink.TimeService.Now:HH:mm:ss}] Fast-forwarded time by +{sec}s");
+        }
+    }
+
+    [RelayCommand]
+    private void ResetLinkState()
+    {
+        _messageLink.StateMachine.Reset(MessageLinkState.Connected);
+        IsHeartbeatLossSimulated = false;
+        _messageLink.IsReceivingHeartbeats = true;
+    }
+
+    [RelayCommand]
+    private void TriggerLowFuel()
+    {
+        GeneratorFuelPercent = 15.0; // Below 20% threshold
     }
 
     private void OnFilterInfoReceived(IFilterInfo filterInfo)

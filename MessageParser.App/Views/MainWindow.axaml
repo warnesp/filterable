@@ -3,29 +3,94 @@
         xmlns:vm="using:MessageParser.App.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="850" d:DesignHeight="550"
-        Width="1150" Height="680"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="750"
+        Width="1280" Height="780"
         x:Class="MessageParser.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="Live Message Protocol Simulator"
+        Title="Live Message Protocol Simulator &amp; Rules Engine"
         Background="#121214">
 
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto, *">
+    <Grid RowDefinitions="Auto, Auto, *">
         <!-- Header Section -->
         <Border Grid.Row="0" Background="#1E1E22" Padding="20,15" BorderBrush="#2D2D34" BorderThickness="0,0,0,1">
-            <StackPanel Spacing="4">
-                <TextBlock Text="Live Message Protocol Simulator" FontSize="20" FontWeight="Bold" Foreground="#ECECF1" />
-                <TextBlock Text="Generate, inspect, and query polymorphic network events in real-time." FontSize="12" Foreground="#8E8E9F" />
-            </StackPanel>
+            <Grid ColumnDefinitions="*, Auto">
+                <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock Text="Live Message Protocol Simulator &amp; Rules Engine" FontSize="20" FontWeight="Bold" Foreground="#ECECF1" />
+                    <TextBlock Text="State machine link driver, timing fast-forward service, and rules engine." FontSize="12" Foreground="#8E8E9F" />
+                </StackPanel>
+
+                <!-- Clock & State Machine Badge -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="15" VerticalAlignment="Center">
+                    <!-- Virtual Clock -->
+                    <Border Background="#26262B" Padding="12,6" CornerRadius="6" BorderBrush="#3D3D44" BorderThickness="1">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="⏱ SIM TIME:" FontSize="10" FontWeight="Bold" Foreground="#8E8E9F" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding SimulatedClockText}" FontSize="13" FontWeight="Bold" Foreground="#86E0A3" FontFamily="Consolas, monospace" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding TimeScaleText}" FontSize="10" Foreground="#A9C7F2" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Link State Badge -->
+                    <Border Background="#26262B" Padding="12,6" CornerRadius="6" BorderBrush="#3D3D44" BorderThickness="1">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="LINK STATE:" FontSize="10" FontWeight="Bold" Foreground="#8E8E9F" VerticalAlignment="Center"/>
+                            <Border Background="{Binding LinkStateColor}" CornerRadius="4" Padding="8,3">
+                                <TextBlock Text="{Binding LinkStateText}" FontSize="11" FontWeight="Bold" Foreground="#FFFFFF"/>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Link Control & Fast-Forward Bar -->
+        <Border Grid.Row="1" Background="#18181C" Padding="15,10" BorderBrush="#2D2D34" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto, *, Auto">
+                <!-- Simulation Main Controls -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <Button Content="{Binding SimulationButtonText}" 
+                            Command="{Binding ToggleSimulationCommand}" 
+                            Classes="accent"
+                            Padding="12,6"/>
+                    <Button Content="Reset Link" 
+                            Command="{Binding ResetLinkStateCommand}"
+                            Padding="12,6"
+                            Background="#2B3D5C" Foreground="#A9C7F2"/>
+                </StackPanel>
+
+                <!-- Timing & Test Fast Forward Controls -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Fast-Forward Clock:" FontSize="11" Foreground="#8E8E9F" VerticalAlignment="Center"/>
+                    <Button Content="1.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="1.0" Padding="8,4" FontSize="11"/>
+                    <Button Content="2.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="2.0" Padding="8,4" FontSize="11"/>
+                    <Button Content="5.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="5.0" Padding="8,4" FontSize="11"/>
+                    <Button Content="10.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="10.0" Padding="8,4" FontSize="11"/>
+
+                    <Rectangle Width="1" Height="16" Fill="#3D3D44" Margin="5,0"/>
+
+                    <Button Content="+1s" Command="{Binding StepTimeSecondsCommand}" CommandParameter="1.0" Padding="8,4" FontSize="11"/>
+                    <Button Content="+5s" Command="{Binding StepTimeSecondsCommand}" CommandParameter="5.0" Padding="8,4" FontSize="11"/>
+                </StackPanel>
+
+                <!-- Scenario Injections -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <ToggleButton Content="Drop Heartbeat (Test 2s/5s)" 
+                                  IsChecked="{Binding IsHeartbeatLossSimulated, Mode=TwoWay}"
+                                  Padding="10,5" FontSize="11" Foreground="#F88F92"/>
+                    <Button Content="Set Low Fuel (&lt;20%)" 
+                            Command="{Binding TriggerLowFuelCommand}" 
+                            Padding="10,5" FontSize="11" Background="#5C422B" Foreground="#F2C9A9"/>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- Main Content Section -->
-        <Grid Grid.Row="1" ColumnDefinitions="1.3*, 1*" Margin="20">
+        <Grid Grid.Row="2" ColumnDefinitions="1.2*, 1*" Margin="15">
             
             <!-- Left Side: Simulator Feed & Search -->
             <Border Grid.Column="0" 
@@ -33,42 +98,38 @@
                     BorderBrush="#2D2D34" 
                     BorderThickness="1" 
                     CornerRadius="8" 
-                    Padding="20" 
-                    Margin="0,0,10,0">
+                    Padding="15" 
+                    Margin="0,0,8,0">
                 <Grid RowDefinitions="Auto, Auto, *">
-                    <!-- Heading & Control Button -->
-                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,15">
-                        <TextBlock Grid.Column="0" Text="Simulator Stream" FontSize="15" FontWeight="SemiBold" Foreground="#ECECF1" VerticalAlignment="Center"/>
-                        <Button Grid.Column="1" 
-                                Content="{Binding SimulationButtonText}" 
-                                Command="{Binding ToggleSimulationCommand}" 
-                                Classes="accent"
-                                Padding="15,8"/>
+                    <!-- Heading -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,10">
+                        <TextBlock Grid.Column="0" Text="Simulator Stream" FontSize="14" FontWeight="SemiBold" Foreground="#ECECF1" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="{Binding LinkStateReason}" FontSize="11" Foreground="#8E8E9F" VerticalAlignment="Center"/>
                     </Grid>
 
                     <!-- Search Controls -->
-                    <Border Grid.Row="1" Background="#26262B" Padding="12" CornerRadius="6" Margin="0,0,0,15">
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Query Filter" FontSize="11" Foreground="#8E8E9F" FontWeight="Bold"/>
+                    <Border Grid.Row="1" Background="#26262B" Padding="10" CornerRadius="6" Margin="0,0,0,10">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Query Filter" FontSize="10" Foreground="#8E8E9F" FontWeight="Bold"/>
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBox Grid.Column="0" 
                                          Text="{Binding SearchQuery, Mode=TwoWay}"
                                          PlaceholderText="e.g. Latitude > 34.3 or Callsign contains AF"
                                          Background="#141417"
                                          BorderBrush="#3D3D44"
-                                         Height="34"
-                                         Padding="8,6"
-                                         FontSize="12"/>
+                                         Height="30"
+                                         Padding="8,4"
+                                         FontSize="11"/>
                                 <Button Grid.Column="1" 
                                         Content="Clear" 
                                         Command="{Binding ClearSearchCommand}"
                                         VerticalAlignment="Center"
-                                        Margin="8,0,0,0"
-                                        Padding="12,6"
+                                        Margin="6,0,0,0"
+                                        Padding="10,4"
                                         Background="#3D2024"
-                                        Foreground="#F88F92"/>
+                                        Foreground="#F88F92"
+                                        FontSize="11"/>
                             </Grid>
-                            <TextBlock Text="Supports structured format: Property Operator Value (e.g. Speed >= 450, State == RUNNING)" FontSize="10" Foreground="#646470" TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding AvailablePropertiesHint, StringFormat='Available fields: {0}'}" FontSize="10" Foreground="#8E8E9F" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
@@ -83,7 +144,7 @@
                              CornerRadius="6">
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:SimulatedMessageItemViewModel">
-                                <Border BorderBrush="#26262B" BorderThickness="0,0,0,1" Padding="10,8">
+                                <Border BorderBrush="#26262B" BorderThickness="0,0,0,1" Padding="8,6">
                                     <StackPanel Spacing="4">
                                         <Grid ColumnDefinitions="Auto, *, Auto">
                                             <!-- Time -->
@@ -100,7 +161,7 @@
                                             </StackPanel>
                                         </Grid>
                                         <!-- Details Summary -->
-                                        <TextBlock Text="{Binding Summary}" FontSize="12" Foreground="#86E0A3" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#86E0A3" Margin="0,2,0,0" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
                             </DataTemplate>
@@ -109,84 +170,116 @@
                 </Grid>
             </Border>
 
-            <!-- Right Side: Details Pane / Placeholder -->
-            <Grid Grid.Column="1" Margin="10,0,0,0">
-                <!-- Details Inspector -->
-                <Border Background="#1A1A1E" 
+            <!-- Right Side: Details Inspector & Rules Engine View -->
+            <Grid Grid.Column="1" RowDefinitions="0.9*, 1.1*" Margin="8,0,0,0">
+                
+                <!-- Top Right: Message Inspector -->
+                <Border Grid.Row="0" 
+                        Background="#1A1A1E" 
                         BorderBrush="#2D2D34" 
                         BorderThickness="1" 
                         CornerRadius="8" 
-                        Padding="20"
-                        IsVisible="{Binding HasSelectedMessage}">
-                    <Grid RowDefinitions="Auto, Auto, Auto, *">
-                        <!-- Heading -->
-                        <TextBlock Grid.Row="0" Text="Message Inspector" FontSize="15" FontWeight="SemiBold" Foreground="#ECECF1" Margin="0,0,0,15"/>
+                        Padding="15"
+                        Margin="0,0,0,8">
+                    <Grid RowDefinitions="Auto, *">
+                        <TextBlock Grid.Row="0" Text="Message Inspector" FontSize="14" FontWeight="SemiBold" Foreground="#ECECF1" Margin="0,0,0,10"/>
                         
-                        <!-- Routing visualization -->
-                        <Grid Grid.Row="1" ColumnDefinitions="*, Auto, *" Margin="0,0,0,20">
-                            <Border Grid.Column="0" Background="#26262B" Padding="12,10" CornerRadius="6" HorizontalAlignment="Stretch">
-                                <StackPanel Spacing="2" HorizontalAlignment="Center">
-                                    <TextBlock Text="SENDER" FontSize="9" FontWeight="Bold" Foreground="#8E8E9F" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Sender}" FontSize="15" FontWeight="SemiBold" Foreground="#ECECF1" HorizontalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                            
-                            <PathIcon Grid.Column="1" 
-                                      Data="M1 8h11.5M8.5 4.5 12 8 8.5 11.5" 
-                                      Width="24" Height="24" 
-                                      Foreground="#646470" 
-                                      Margin="15,0" 
-                                      VerticalAlignment="Center"/>
-                            
-                            <Border Grid.Column="2" Background="#26262B" Padding="12,10" CornerRadius="6" HorizontalAlignment="Stretch">
-                                <StackPanel Spacing="2" HorizontalAlignment="Center">
-                                    <TextBlock Text="RECEIVER" FontSize="9" FontWeight="Bold" Foreground="#8E8E9F" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Receiver}" FontSize="15" FontWeight="SemiBold" Foreground="#ECECF1" HorizontalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                        </Grid>
+                        <ScrollViewer Grid.Row="1" IsVisible="{Binding HasSelectedMessage}">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*, Auto, *">
+                                    <Border Grid.Column="0" Background="#26262B" Padding="8" CornerRadius="4">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="SENDER" FontSize="9" Foreground="#8E8E9F" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Sender}" FontSize="13" FontWeight="Bold" Foreground="#ECECF1" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Text="➔" Foreground="#646470" VerticalAlignment="Center" Margin="10,0"/>
+                                    <Border Grid.Column="2" Background="#26262B" Padding="8" CornerRadius="4">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="RECEIVER" FontSize="9" Foreground="#8E8E9F" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Receiver}" FontSize="13" FontWeight="Bold" Foreground="#ECECF1" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
 
-                        <!-- Command Type -->
-                        <Grid Grid.Row="2" ColumnDefinitions="Auto, *" Margin="0,0,0,20">
-                            <TextBlock Grid.Column="0" Text="Command:" FontSize="13" Foreground="#8E8E9F" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <Border Grid.Column="1" Background="#3E2B5C" Padding="10,5" CornerRadius="4" HorizontalAlignment="Left">
-                                <TextBlock Text="{Binding CommandName}" FontSize="13" FontWeight="Bold" Foreground="#D5C7F2"/>
-                            </Border>
-                        </Grid>
-
-                        <!-- Key-Value Payload Details -->
-                        <Grid Grid.Row="3" RowDefinitions="Auto, *">
-                            <TextBlock Grid.Row="0" Text="Payload Properties" FontSize="13" FontWeight="SemiBold" Foreground="#ECECF1" Margin="0,0,0,8"/>
-                            
-                            <ScrollViewer Grid.Row="1" Background="#141417" CornerRadius="6">
                                 <ItemsControl ItemsSource="{Binding PayloadItems}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Border BorderBrush="#26262B" BorderThickness="0,0,0,1" Padding="12,10">
+                                            <Border BorderBrush="#26262B" BorderThickness="0,0,0,1" Padding="6,4">
                                                 <Grid ColumnDefinitions="*, 1.5*">
-                                                    <TextBlock Grid.Column="0" Text="{Binding Key}" FontFamily="Consolas, monospace" Foreground="#86E0A3" FontWeight="Medium"/>
-                                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontFamily="Consolas, monospace" Foreground="#ECECF1" TextWrapping="Wrap"/>
+                                                    <TextBlock Grid.Column="0" Text="{Binding Key}" FontFamily="Consolas, monospace" Foreground="#86E0A3" FontSize="11"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontFamily="Consolas, monospace" Foreground="#ECECF1" FontSize="11"/>
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                            </ScrollViewer>
-                        </Grid>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <TextBlock Grid.Row="1" 
+                                   Text="Select a message from the feed to inspect properties." 
+                                   FontSize="12" Foreground="#646470" 
+                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                   IsVisible="{Binding !HasSelectedMessage}"/>
                     </Grid>
                 </Border>
 
-                <!-- No Selection Placeholder -->
-                <Border Background="#1A1A1E" 
+                <!-- Bottom Right: Active Rules Engine & Logs -->
+                <Border Grid.Row="1" 
+                        Background="#1A1A1E" 
                         BorderBrush="#2D2D34" 
                         BorderThickness="1" 
                         CornerRadius="8" 
-                        Padding="20"
-                        IsVisible="{Binding !HasSelectedMessage}">
-                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10">
-                        <TextBlock Text="No Message Selected" FontSize="16" FontWeight="SemiBold" Foreground="#ECECF1" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Select a message from the live stream to inspect its full properties." FontSize="13" Foreground="#646470" TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center"/>
-                    </StackPanel>
+                        Padding="15"
+                        Margin="0,8,0,0">
+                    <Grid RowDefinitions="Auto, *, Auto">
+                        <TextBlock Grid.Row="0" Text="Rules Engine &amp; State Policy" FontSize="14" FontWeight="SemiBold" Foreground="#ECECF1" Margin="0,0,0,10"/>
+                        
+                        <!-- List of Rules -->
+                        <ScrollViewer Grid.Row="1" Background="#141417" CornerRadius="6" Padding="5">
+                            <ItemsControl ItemsSource="{Binding Rules}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:RuleViewModel">
+                                        <Border BorderBrush="#26262B" BorderThickness="0,0,0,1" Padding="10,8">
+                                            <Grid ColumnDefinitions="Auto, *, Auto">
+                                                <!-- Enable/Disable Checkbox -->
+                                                <CheckBox Grid.Column="0" IsChecked="{Binding IsEnabled, Mode=TwoWay}" VerticalAlignment="Top" Margin="0,0,8,0"/>
+                                                
+                                                <!-- Rule Metadata -->
+                                                <StackPanel Grid.Column="1" Spacing="2">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="Bold" Foreground="#ECECF1"/>
+                                                        <Border Background="#2B3D5C" CornerRadius="3" Padding="4,1">
+                                                            <TextBlock Text="{Binding Category}" FontSize="9" Foreground="#A9C7F2"/>
+                                                        </Border>
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding Description}" FontSize="10" Foreground="#8E8E9F" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding ParametersSummary}" FontSize="10" Foreground="#86E0A3" FontFamily="Consolas, monospace" Margin="0,2,0,0"/>
+                                                </StackPanel>
+
+                                                <!-- Status Indicator -->
+                                                <TextBlock Grid.Column="2" Text="{Binding Id}" FontSize="9" Foreground="#646470" VerticalAlignment="Top"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <!-- Rule Execution Logs -->
+                        <Border Grid.Row="2" Background="#141417" CornerRadius="6" Padding="8" Margin="0,8,0,0" Height="85">
+                            <ScrollViewer>
+                                <ItemsControl ItemsSource="{Binding RuleLogs}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" FontSize="10" FontFamily="Consolas, monospace" Foreground="#A9C7F2"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
                 </Border>
             </Grid>
         </Grid>
