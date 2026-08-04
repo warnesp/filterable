@@ -1,4 +1,5 @@
 using System;
+using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
 using MessageParser.Core.Messages;
@@ -14,6 +15,9 @@ namespace MessageParser.Plugins.Simulation
         private CancellationTokenSource? _cts;
         private Task? _runTask;
 
+        private readonly Subject<string> _rawMessageSubject = new Subject<string>();
+        private readonly Subject<MessageBase> _messageSubject = new Subject<MessageBase>();
+
         public LinkStateMachine StateMachine { get; }
         public ITimeService TimeService => StateMachine.TimeService;
 
@@ -21,9 +25,9 @@ namespace MessageParser.Plugins.Simulation
         public bool IsReceivingHeartbeats { get; set; } = true;
         public double GeneratorFuelPercent { get; set; } = 85.0;
 
-        // Event raised when a raw string message or typed message comes "off the wire"
-        public event EventHandler<string>? RawMessageReceived;
-        public event EventHandler<MessageBase>? MessageReceived;
+        // IObservable reactive streams
+        public IObservable<string> RawMessageStream => _rawMessageSubject;
+        public IObservable<MessageBase> MessageStream => _messageSubject;
 
         public TestMessageLink(ITimeService? timeService = null)
         {
@@ -35,16 +39,17 @@ namespace MessageParser.Plugins.Simulation
             StateMachine.RuleEngine.RegisterRule(new AirTrackUpdateRule());
             StateMachine.RuleEngine.RegisterRule(new LowFuelStatusRule());
 
-            StateMachine.OutboundMessageGenerated += OnRuleOutboundMessageGenerated;
+            // Subscribe to OutboundMessages stream from StateMachine
+            StateMachine.OutboundMessages.Subscribe(OnRuleOutboundMessageGenerated);
         }
 
-        private void OnRuleOutboundMessageGenerated(object? sender, MessageBase message)
+        private void OnRuleOutboundMessageGenerated(MessageBase message)
         {
-            MessageReceived?.Invoke(this, message);
+            _messageSubject.OnNext(message);
             string formattedRaw = FormatMessageToRaw(message);
             if (!string.IsNullOrEmpty(formattedRaw))
             {
-                RawMessageReceived?.Invoke(this, formattedRaw);
+                _rawMessageSubject.OnNext(formattedRaw);
             }
         }
 
@@ -82,7 +87,7 @@ namespace MessageParser.Plugins.Simulation
                     string rawMessage = GenerateRandomMessage();
                     if (!string.IsNullOrEmpty(rawMessage))
                     {
-                        RawMessageReceived?.Invoke(this, rawMessage);
+                        _rawMessageSubject.OnNext(rawMessage);
                     }
                 }
             }
@@ -181,7 +186,7 @@ namespace MessageParser.Plugins.Simulation
                         };
                         StateMachine.ProcessIncomingMessage(genStatus);
 
-                        return $"BASE_GEN -> MONITOR | GENERATOR_STATUS | gen_id={genId};state={genStatus.State};load={load}%;fuel={genStatus.FuelLevel};temp={temp:F1}C";
+                        return $"BASE_GEN -> MONITOR | GENERATOR_STATUS | gen_id={genId};state={genStatus.State};load={load}%;fuel={fuel:F0}%;temp={temp:F1}C";
                     }
 
                 default:

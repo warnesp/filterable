@@ -20,13 +20,19 @@ namespace MessageParser.Tests
             var stateMachine = new LinkStateMachine(clock);
             stateMachine.RuleEngine.RegisterRule(new HeartbeatTimeoutRule());
 
-            Assert.Equal(MessageLinkState.Connected, stateMachine.CurrentState);
+            LinkStateChangedEventArgs? lastStateEvent = null;
+            using (stateMachine.StateChanged.Subscribe(e => lastStateEvent = e))
+            {
+                Assert.Equal(MessageLinkState.Connected, stateMachine.CurrentState);
 
-            // Advance time by 2.1 seconds without receiving a heartbeat
-            clock.AdvanceTime(TimeSpan.FromSeconds(2.1));
-            stateMachine.EvaluateStateAndRules();
+                // Advance time by 2.1 seconds without receiving a heartbeat
+                clock.AdvanceTime(TimeSpan.FromSeconds(2.1));
+                stateMachine.EvaluateStateAndRules();
 
-            Assert.Equal(MessageLinkState.Degraded, stateMachine.CurrentState);
+                Assert.Equal(MessageLinkState.Degraded, stateMachine.CurrentState);
+                Assert.NotNull(lastStateEvent);
+                Assert.Equal(MessageLinkState.Degraded, lastStateEvent.NewState);
+            }
         }
 
         [Fact]
@@ -87,13 +93,14 @@ namespace MessageParser.Tests
             stateMachine.RuleEngine.RegisterRule(new AutoHeartbeatSendRule());
 
             List<MessageBase> outbound = new List<MessageBase>();
-            stateMachine.OutboundMessageGenerated += (s, msg) => outbound.Add(msg);
+            using (stateMachine.OutboundMessages.Subscribe(msg => outbound.Add(msg)))
+            {
+                // Advance time by 1.1 seconds
+                clock.AdvanceTime(TimeSpan.FromSeconds(1.1));
+                stateMachine.EvaluateStateAndRules();
 
-            // Advance time by 1.1 seconds
-            clock.AdvanceTime(TimeSpan.FromSeconds(1.1));
-            stateMachine.EvaluateStateAndRules();
-
-            Assert.Contains(outbound, m => m is HeartBeat);
+                Assert.Contains(outbound, m => m is HeartBeat);
+            }
         }
 
         [Fact]
@@ -105,13 +112,14 @@ namespace MessageParser.Tests
             stateMachine.RuleEngine.RegisterRule(new AirTrackUpdateRule());
 
             List<MessageBase> outbound = new List<MessageBase>();
-            stateMachine.OutboundMessageGenerated += (s, msg) => outbound.Add(msg);
+            using (stateMachine.OutboundMessages.Subscribe(msg => outbound.Add(msg)))
+            {
+                // Advance time by 10.1 seconds
+                clock.AdvanceTime(TimeSpan.FromSeconds(10.1));
+                stateMachine.EvaluateStateAndRules();
 
-            // Advance time by 10.1 seconds
-            clock.AdvanceTime(TimeSpan.FromSeconds(10.1));
-            stateMachine.EvaluateStateAndRules();
-
-            Assert.Contains(outbound, m => m is AirTrack);
+                Assert.Contains(outbound, m => m is AirTrack);
+            }
         }
 
         [Fact]

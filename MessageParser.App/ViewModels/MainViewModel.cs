@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Reactive.Disposables;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -25,6 +26,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private readonly DataBus _dataBus = new();
     private readonly TestMessageLink _messageLink = new();
     private readonly List<IFilterInfo> _discoveredFilterInfos = new();
+    private readonly CompositeDisposable _disposables = new();
     
     private readonly List<MessageBase> _allMessages = new();
     private readonly List<int> _filteredIndices = new();
@@ -103,14 +105,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         var basePlugin = new BaseMessagesPlugin();
         basePlugin.Initialize(_messageRegistry);
 
-        // Bind simulator events
-        _messageLink.RawMessageReceived += OnSimulatorRawMessageReceived;
-        _messageLink.MessageReceived += OnSimulatorMessageReceived;
+        // Bind reactive simulator streams via IObservable
+        _disposables.Add(_messageLink.RawMessageStream.Subscribe(OnSimulatorRawMessageReceived));
+        _disposables.Add(_messageLink.MessageStream.Subscribe(OnSimulatorMessageReceived));
 
-        // Bind State Machine events
-        _messageLink.StateMachine.StateChanged += OnLinkStateChanged;
-        _messageLink.StateMachine.RuleLogAdded += OnRuleLogAdded;
-        _messageLink.TimeService.TimeAdvanced += OnTimeAdvanced;
+        // Bind reactive State Machine IObservable streams
+        _disposables.Add(_messageLink.StateMachine.StateChanged.Subscribe(OnLinkStateChanged));
+        _disposables.Add(_messageLink.StateMachine.RuleLogs.Subscribe(OnRuleLogAdded));
+        _disposables.Add(_messageLink.TimeService.TimeAdvanced.Subscribe(OnTimeAdvanced));
 
         // Load Rules into ViewModel collection
         foreach (var rule in _messageLink.StateMachine.RuleEngine.Rules)
@@ -121,7 +123,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         UpdateLinkStateDisplay(_messageLink.StateMachine.CurrentState, "Link active.");
     }
 
-    private void OnSimulatorRawMessageReceived(object? sender, string rawMessage)
+    private void OnSimulatorRawMessageReceived(string rawMessage)
     {
         var parsed = Parser.Parse(rawMessage);
         if (parsed.IsValid)
@@ -138,12 +140,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private void OnSimulatorMessageReceived(object? sender, MessageBase message)
+    private void OnSimulatorMessageReceived(MessageBase message)
     {
         _dataBus.Publish<MessageBase>(message);
     }
 
-    private void OnLinkStateChanged(object? sender, LinkStateChangedEventArgs e)
+    private void OnLinkStateChanged(LinkStateChangedEventArgs e)
     {
         Dispatcher.UIThread.Post(() =>
         {
@@ -153,7 +155,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         });
     }
 
-    private void OnRuleLogAdded(object? sender, RuleLogEventArgs e)
+    private void OnRuleLogAdded(RuleLogEventArgs e)
     {
         Dispatcher.UIThread.Post(() =>
         {
@@ -162,7 +164,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         });
     }
 
-    private void OnTimeAdvanced(object? sender, DateTime simTime)
+    private void OnTimeAdvanced(DateTime simTime)
     {
         Dispatcher.UIThread.Post(() =>
         {
@@ -565,6 +567,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         _messageSubscription?.Dispose();
         _filterInfoSubscription?.Dispose();
+        _disposables.Dispose();
         _messageLink.Stop();
     }
 }

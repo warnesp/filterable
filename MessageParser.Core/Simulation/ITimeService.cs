@@ -27,8 +27,8 @@ namespace MessageParser.Core.Simulation
         Task DelayAsync(TimeSpan duration, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Event fired whenever simulated time changes/advances.
+        /// Observable stream emitted whenever simulated time changes/advances.
         /// </summary>
-        event EventHandler<DateTime>? TimeAdvanced;
+        IObservable<DateTime> TimeAdvanced { get; }
     }
 }

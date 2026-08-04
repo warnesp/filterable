@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,8 +13,9 @@ namespace MessageParser.Core.Simulation
         private TimeSpan _manualOffset = TimeSpan.Zero;
         private double _timeScale = 1.0;
         private readonly object _lock = new object();
+        private readonly Subject<DateTime> _timeAdvancedSubject = new Subject<DateTime>();
 
-        public event EventHandler<DateTime>? TimeAdvanced;
+        public IObservable<DateTime> TimeAdvanced => _timeAdvancedSubject;
 
         public SimulationClock(DateTime? initialSimulatedTime = null)
         {
@@ -61,7 +63,7 @@ namespace MessageParser.Core.Simulation
                 _manualOffset += delta;
                 newTime = Now;
             }
-            TimeAdvanced?.Invoke(this, newTime);
+            _timeAdvancedSubject.OnNext(newTime);
         }
 
         public async Task DelayAsync(TimeSpan duration, CancellationToken cancellationToken = default)

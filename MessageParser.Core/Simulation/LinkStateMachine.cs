@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
 using MessageParser.Core.Messages;
@@ -7,7 +8,7 @@ using MessageParser.Core.Rules;
 
 namespace MessageParser.Core.Simulation
 {
-    public class LinkStateChangedEventArgs : EventArgs
+    public class LinkStateChangedEventArgs
     {
         public MessageLinkState OldState { get; }
         public MessageLinkState NewState { get; }
@@ -23,7 +24,7 @@ namespace MessageParser.Core.Simulation
         }
     }
 
-    public class RuleLogEventArgs : EventArgs
+    public class RuleLogEventArgs
     {
         public string RuleId { get; }
         public string RuleName { get; }
@@ -47,12 +48,17 @@ namespace MessageParser.Core.Simulation
         private CancellationTokenSource? _loopCts;
         private Task? _loopTask;
 
+        private readonly Subject<LinkStateChangedEventArgs> _stateChangedSubject = new Subject<LinkStateChangedEventArgs>();
+        private readonly Subject<MessageBase> _outboundMessagesSubject = new Subject<MessageBase>();
+        private readonly Subject<RuleLogEventArgs> _ruleLogsSubject = new Subject<RuleLogEventArgs>();
+
         public ITimeService TimeService { get; }
         public RuleEngine RuleEngine { get; }
 
-        public event EventHandler<LinkStateChangedEventArgs>? StateChanged;
-        public event EventHandler<MessageBase>? OutboundMessageGenerated;
-        public event EventHandler<RuleLogEventArgs>? RuleLogAdded;
+        // Reactive IObservable streams
+        public IObservable<LinkStateChangedEventArgs> StateChanged => _stateChangedSubject;
+        public IObservable<MessageBase> OutboundMessages => _outboundMessagesSubject;
+        public IObservable<RuleLogEventArgs> RuleLogs => _ruleLogsSubject;
 
         public MessageLinkState CurrentState
         {
@@ -91,8 +97,8 @@ namespace MessageParser.Core.Simulation
                 LastAirTrackSentTime = TimeService.Now
             };
 
-            // Rules are registered by caller or plugin initializer
-            TimeService.TimeAdvanced += (s, time) => EvaluateStateAndRules();
+            // Hook clock manual advances stream to immediately trigger evaluation tick
+            TimeService.TimeAdvanced.Subscribe(_ => EvaluateStateAndRules());
         }
 
         public void Start()
@@ -121,7 +127,7 @@ namespace MessageParser.Core.Simulation
                 _ruleContext.LastAirTrackSentTime = TimeService.Now;
                 _ruleContext.CurrentFuelLevel = 100.0;
             }
-            StateChanged?.Invoke(this, new LinkStateChangedEventArgs(MessageLinkState.Closed, initialState, "Link manually reset/reconnected.", TimeService.Now));
+            _stateChangedSubject.OnNext(new LinkStateChangedEventArgs(MessageLinkState.Closed, initialState, "Link manually reset/reconnected.", TimeService.Now));
         }
 
         public void ProcessIncomingMessage(MessageBase message)
@@ -166,17 +172,17 @@ namespace MessageParser.Core.Simulation
                         }
 
                         string reason = res.LogMessage ?? $"Transitioned to {_currentState}";
-                        StateChanged?.Invoke(this, new LinkStateChangedEventArgs(oldState, _currentState, reason, TimeService.Now));
+                        _stateChangedSubject.OnNext(new LinkStateChangedEventArgs(oldState, _currentState, reason, TimeService.Now));
                     }
 
                     if (res.MessageToSend != null)
                     {
-                        OutboundMessageGenerated?.Invoke(this, res.MessageToSend);
+                        _outboundMessagesSubject.OnNext(res.MessageToSend);
                     }
 
                     if (!string.IsNullOrEmpty(res.LogMessage))
                     {
-                        RuleLogAdded?.Invoke(this, new RuleLogEventArgs("RULE", "Rules Engine", res.LogMessage, TimeService.Now));
+                        _ruleLogsSubject.OnNext(new RuleLogEventArgs("RULE", "Rules Engine", res.LogMessage, TimeService.Now));
                     }
                 }
             }

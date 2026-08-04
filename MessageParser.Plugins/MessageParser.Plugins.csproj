@@ -9,9 +9,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MessageParser.Core\MessageParser.Core.csproj" />
-    <ProjectReference Include="..\MessageParser.Generators\MessageParser.Generators.csproj" 
-                      OutputItemType="Analyzer" 
-                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\MessageParser.Generators\MessageParser.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Reactive" Version="7.0.0" />
   </ItemGroup>
 
 </Project>
