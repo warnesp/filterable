@@ -174,5 +174,21 @@ namespace MessageParser.Tests
             stateMachine.EvaluateStateAndRules();
             Assert.Equal(MessageLinkState.Degraded, stateMachine.CurrentState);
         }
+
+        [Fact]
+        public void Test_SatelliteLinkStateMachine_WithSatelliteRuleContext()
+        {
+            var baseTime = new DateTime(2026, 8, 4, 10, 0, 0, DateTimeKind.Utc);
+            var clock = new SimulationClock(baseTime);
+            var satStateMachine = new MessageParser.Plugins.Satellite.SatelliteLinkStateMachine(clock);
+
+            Assert.Equal(MessageLinkState.Connected, satStateMachine.CurrentState);
+
+            // Advance time by 3.1 seconds without satellite heartbeat lock -> Degraded
+            clock.AdvanceTime(TimeSpan.FromSeconds(3.1));
+            satStateMachine.EvaluateStateAndRules();
+
+            Assert.Equal(MessageLinkState.Degraded, satStateMachine.CurrentState);
+        }
     }
 }

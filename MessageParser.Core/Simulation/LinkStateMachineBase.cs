@@ -42,8 +42,27 @@ namespace MessageParser.Core.Simulation
 
     public abstract class LinkStateMachineBase : IDisposable
     {
+        public abstract string LinkTypeName { get; }
+        public abstract ITimeService TimeService { get; }
+        public abstract IRuleEngine RuleEngine { get; }
+        public abstract MessageLinkState CurrentState { get; protected set; }
+
+        public abstract IObservable<LinkStateChangedEventArgs> StateChanged { get; }
+        public abstract IObservable<MessageBase> OutboundMessages { get; }
+        public abstract IObservable<RuleLogEventArgs> RuleLogs { get; }
+
+        public abstract void Start();
+        public abstract void Stop();
+        public abstract void Reset(MessageLinkState initialState = MessageLinkState.Connected);
+        public abstract void ProcessIncomingMessage(MessageBase message);
+        public abstract void EvaluateStateAndRules();
+        public abstract void Dispose();
+    }
+
+    public abstract class LinkStateMachineBase<TContext> : LinkStateMachineBase where TContext : RuleContext
+    {
         private MessageLinkState _currentState = MessageLinkState.Connected;
-        protected readonly RuleContext RuleContext;
+        protected readonly TContext RuleContext;
         private readonly object _lock = new object();
         private CancellationTokenSource? _loopCts;
         private Task? _loopTask;
@@ -52,16 +71,14 @@ namespace MessageParser.Core.Simulation
         private readonly Subject<MessageBase> _outboundMessagesSubject = new Subject<MessageBase>();
         private readonly Subject<RuleLogEventArgs> _ruleLogsSubject = new Subject<RuleLogEventArgs>();
 
-        public abstract string LinkTypeName { get; }
-        public ITimeService TimeService { get; }
-        public RuleEngine RuleEngine { get; }
+        public override ITimeService TimeService { get; }
+        public override RuleEngine<TContext> RuleEngine { get; }
 
-        // Reactive IObservable streams shared by all link state machines
-        public IObservable<LinkStateChangedEventArgs> StateChanged => _stateChangedSubject;
-        public IObservable<MessageBase> OutboundMessages => _outboundMessagesSubject;
-        public IObservable<RuleLogEventArgs> RuleLogs => _ruleLogsSubject;
+        public override IObservable<LinkStateChangedEventArgs> StateChanged => _stateChangedSubject;
+        public override IObservable<MessageBase> OutboundMessages => _outboundMessagesSubject;
+        public override IObservable<RuleLogEventArgs> RuleLogs => _ruleLogsSubject;
 
-        public MessageLinkState CurrentState
+        public override MessageLinkState CurrentState
         {
             get
             {
@@ -88,55 +105,51 @@ namespace MessageParser.Core.Simulation
             }
         }
 
-        protected LinkStateMachineBase(ITimeService? timeService = null, RuleEngine? ruleEngine = null)
+        protected LinkStateMachineBase(TContext? context = null, ITimeService? timeService = null, RuleEngine<TContext>? ruleEngine = null)
         {
-            TimeService = timeService ?? new SimulationClock();
-            RuleEngine = ruleEngine ?? new RuleEngine();
-            RuleContext = new RuleContext(TimeService)
-            {
-                CurrentState = MessageLinkState.Connected,
-                LastHeartbeatReceivedTime = TimeService.Now,
-                LastHeartbeatSentTime = TimeService.Now,
-                LastAirTrackSentTime = TimeService.Now
-            };
+            TimeService = timeService ?? context?.TimeService ?? new SimulationClock();
+            RuleEngine = ruleEngine ?? new RuleEngine<TContext>();
+            RuleContext = context ?? CreateRuleContext(TimeService);
+            RuleContext.CurrentState = MessageLinkState.Connected;
 
-            // Hook clock manual advances stream to immediately trigger evaluation tick
             TimeService.TimeAdvanced.Subscribe(_ => EvaluateStateAndRules());
+        }
+
+        protected virtual TContext CreateRuleContext(ITimeService timeService)
+        {
+            return (TContext)Activator.CreateInstance(typeof(TContext), timeService)!;
         }
 
         protected virtual void OnStateTransitioned(MessageLinkState oldState, MessageLinkState newState)
         {
         }
 
-        public virtual void Start()
+        public override void Start()
         {
             if (_loopTask != null) return;
             _loopCts = new CancellationTokenSource();
             _loopTask = RunLoopAsync(_loopCts.Token);
         }
 
-        public virtual void Stop()
+        public override void Stop()
         {
             _loopCts?.Cancel();
             _loopTask = null;
             _loopCts = null;
         }
 
-        public virtual void Reset(MessageLinkState initialState = MessageLinkState.Connected)
+        public override void Reset(MessageLinkState initialState = MessageLinkState.Connected)
         {
             lock (_lock)
             {
                 _currentState = initialState;
                 RuleContext.CurrentState = initialState;
-                RuleContext.LastHeartbeatReceivedTime = TimeService.Now;
                 RuleContext.DegradedStateEnteredTime = null;
-                RuleContext.LastHeartbeatSentTime = TimeService.Now;
-                RuleContext.LastAirTrackSentTime = TimeService.Now;
             }
             _stateChangedSubject.OnNext(new LinkStateChangedEventArgs(MessageLinkState.Closed, initialState, $"{LinkTypeName} manually reset/reconnected.", TimeService.Now));
         }
 
-        public virtual void ProcessIncomingMessage(MessageBase message)
+        public override void ProcessIncomingMessage(MessageBase message)
         {
             if (message == null) return;
 
@@ -148,7 +161,7 @@ namespace MessageParser.Core.Simulation
             }
         }
 
-        public virtual void EvaluateStateAndRules()
+        public override void EvaluateStateAndRules()
         {
             lock (_lock)
             {
@@ -198,7 +211,7 @@ namespace MessageParser.Core.Simulation
             }
         }
 
-        public virtual void Dispose()
+        public override void Dispose()
         {
             Stop();
             _stateChangedSubject.Dispose();

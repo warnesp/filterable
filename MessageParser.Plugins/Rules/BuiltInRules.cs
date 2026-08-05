@@ -6,7 +6,7 @@ using MessageParser.Core.Simulation;
 
 namespace MessageParser.Plugins.Rules
 {
-    public abstract class RuleBase : IRule
+    public abstract class RuleBase<TContext> : IRule<TContext> where TContext : RuleContext
     {
         private readonly Dictionary<string, object> _parameters = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
@@ -47,7 +47,11 @@ namespace MessageParser.Plugins.Rules
             return defaultValue;
         }
 
-        public abstract RuleExecutionResult Evaluate(RuleContext context);
+        public abstract RuleExecutionResult Evaluate(TContext context);
+    }
+
+    public abstract class RuleBase : RuleBase<DefaultLinkRuleContext>
+    {
     }
 
     /// <summary>
@@ -66,7 +70,7 @@ namespace MessageParser.Plugins.Rules
             AddParameter("DegradedCloseTimeoutSeconds", 5.0);
         }
 
-        public override RuleExecutionResult Evaluate(RuleContext context)
+        public override RuleExecutionResult Evaluate(DefaultLinkRuleContext context)
         {
             if (!IsEnabled) return RuleExecutionResult.NoAction();
 
@@ -135,7 +139,7 @@ namespace MessageParser.Plugins.Rules
             AddParameter("HeartbeatSendIntervalSeconds", 1.0);
         }
 
-        public override RuleExecutionResult Evaluate(RuleContext context)
+        public override RuleExecutionResult Evaluate(DefaultLinkRuleContext context)
         {
             if (!IsEnabled || context.CurrentState != MessageLinkState.Connected)
                 return RuleExecutionResult.NoAction();
@@ -185,7 +189,7 @@ namespace MessageParser.Plugins.Rules
             AddParameter("AirTrackUpdateIntervalSeconds", 10.0);
         }
 
-        public override RuleExecutionResult Evaluate(RuleContext context)
+        public override RuleExecutionResult Evaluate(DefaultLinkRuleContext context)
         {
             if (!IsEnabled || context.CurrentState != MessageLinkState.Connected)
                 return RuleExecutionResult.NoAction();
@@ -236,7 +240,7 @@ namespace MessageParser.Plugins.Rules
             AddParameter("LowFuelThresholdPercent", 20.0);
         }
 
-        public override RuleExecutionResult Evaluate(RuleContext context)
+        public override RuleExecutionResult Evaluate(DefaultLinkRuleContext context)
         {
             if (!IsEnabled) return RuleExecutionResult.NoAction();
 

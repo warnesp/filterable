@@ -9,7 +9,7 @@ namespace MessageParser.Plugins.Satellite
     /// <summary>
     /// Satellite Rule 1: Orbit Pass Timeout. Degrades link after 3s loss, closes after 6s.
     /// </summary>
-    public class OrbitPassTimeoutRule : RuleBase
+    public class OrbitPassTimeoutRule : RuleBase<SatelliteRuleContext>
     {
         public override string Id => "RULE_SAT_ORBIT_TIMEOUT";
         public override string Name => "Satellite Orbit Pass Timeout";
@@ -22,7 +22,7 @@ namespace MessageParser.Plugins.Satellite
             AddParameter("SignalLostCloseTimeoutSeconds", 6.0);
         }
 
-        public override RuleExecutionResult Evaluate(RuleContext context)
+        public override RuleExecutionResult Evaluate(SatelliteRuleContext context)
         {
             if (!IsEnabled) return RuleExecutionResult.NoAction();
 
@@ -77,7 +77,7 @@ namespace MessageParser.Plugins.Satellite
     /// <summary>
     /// Satellite Rule 2: Broadcast Satellite Telemetry every 5 seconds while Connected.
     /// </summary>
-    public class SatelliteTelemetryBroadcastRule : RuleBase
+    public class SatelliteTelemetryBroadcastRule : RuleBase<SatelliteRuleContext>
     {
         public override string Id => "RULE_SAT_TELEMETRY_BROADCAST";
         public override string Name => "Satellite Telemetry Beacon";
@@ -89,7 +89,7 @@ namespace MessageParser.Plugins.Satellite
             AddParameter("TelemetryIntervalSeconds", 5.0);
         }
 
-        public override RuleExecutionResult Evaluate(RuleContext context)
+        public override RuleExecutionResult Evaluate(SatelliteRuleContext context)
         {
             if (!IsEnabled || context.CurrentState != MessageLinkState.Connected)
                 return RuleExecutionResult.NoAction();

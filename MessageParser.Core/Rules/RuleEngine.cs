@@ -4,9 +4,17 @@ using System.Linq;
 
 namespace MessageParser.Core.Rules
 {
-    public class RuleEngine
+    public interface IRuleEngine
     {
-        private readonly List<IRule> _rules = new List<IRule>();
+        IReadOnlyList<IRule> Rules { get; }
+        void RegisterRule(IRule rule);
+        bool SetRuleEnabled(string ruleId, bool enabled);
+        bool SetRuleParameter(string ruleId, string parameterKey, object value);
+    }
+
+    public class RuleEngine<TContext> : IRuleEngine where TContext : RuleContext
+    {
+        private readonly List<IRule<TContext>> _rules = new List<IRule<TContext>>();
         private readonly object _lock = new object();
 
         public IReadOnlyList<IRule> Rules
@@ -15,12 +23,12 @@ namespace MessageParser.Core.Rules
             {
                 lock (_lock)
                 {
-                    return _rules.ToList();
+                    return _rules.Cast<IRule>().ToList();
                 }
             }
         }
 
-        public void RegisterRule(IRule rule)
+        public void RegisterRule(IRule<TContext> rule)
         {
             if (rule == null) throw new ArgumentNullException(nameof(rule));
 
@@ -30,6 +38,18 @@ namespace MessageParser.Core.Rules
                 {
                     _rules.Add(rule);
                 }
+            }
+        }
+
+        public void RegisterRule(IRule rule)
+        {
+            if (rule is IRule<TContext> typedRule)
+            {
+                RegisterRule(typedRule);
+            }
+            else
+            {
+                throw new ArgumentException($"Rule '{rule?.Name ?? "Unknown"}' ({rule?.GetType().Name}) is not compatible with context type {typeof(TContext).Name}.", nameof(rule));
             }
         }
 
@@ -61,9 +81,9 @@ namespace MessageParser.Core.Rules
             }
         }
 
-        public List<RuleExecutionResult> EvaluateAll(RuleContext context)
+        public List<RuleExecutionResult> EvaluateAll(TContext context)
         {
-            List<IRule> rulesToEvaluate;
+            List<IRule<TContext>> rulesToEvaluate;
             lock (_lock)
             {
                 rulesToEvaluate = _rules.Where(r => r.IsEnabled).ToList();
@@ -82,5 +102,9 @@ namespace MessageParser.Core.Rules
 
             return results;
         }
+    }
+
+    public class RuleEngine : RuleEngine<RuleContext>
+    {
     }
 }

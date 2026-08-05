@@ -19,10 +19,17 @@ namespace MessageParser.Core.Rules
         /// Update a rule parameter value.
         /// </summary>
         void SetParameter(string key, object value);
+    }
 
+    /// <summary>
+    /// Strongly-typed rule evaluating a specific RuleContext type.
+    /// Contravariant ('in TContext') allows rules for base contexts to evaluate derived contexts.
+    /// </summary>
+    public interface IRule<in TContext> : IRule where TContext : RuleContext
+    {
         /// <summary>
         /// Evaluates the rule against the current context.
         /// </summary>
-        RuleExecutionResult Evaluate(RuleContext context);
+        RuleExecutionResult Evaluate(TContext context);
     }
 }
