@@ -246,7 +246,6 @@ namespace MessageParser.Plugins.Rules
             {
                 if (double.TryParse(genStatus.FuelLevel.Replace("%", "").Trim(), out double fuelVal))
                 {
-                    context.CurrentFuelLevel = fuelVal;
                     if (fuelVal < threshold && genStatus.State != "LowFuel")
                     {
                         string oldState = genStatus.State;

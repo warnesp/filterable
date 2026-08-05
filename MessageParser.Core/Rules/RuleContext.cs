@@ -15,7 +15,6 @@ namespace MessageParser.Core.Rules
         public DateTime? LastHeartbeatSentTime { get; set; }
         public DateTime? LastAirTrackSentTime { get; set; }
         public MessageBase? IncomingMessage { get; set; }
-        public double CurrentFuelLevel { get; set; } = 100.0; // Percentage 0-100
 
         public RuleContext(ITimeService timeService)
         {

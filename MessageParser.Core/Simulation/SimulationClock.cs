@@ -1,8 +1,5 @@
-using System;
 using System.Diagnostics;
 using System.Reactive.Subjects;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace MessageParser.Core.Simulation
 {

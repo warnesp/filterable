@@ -10,12 +10,14 @@ using CommunityToolkit.Mvvm.Input;
 using MessageParser.Core;
 using MessageParser.Core.Bus;
 using MessageParser.Core.Messages;
+using MessageParser.Core.Plugins;
 using MessageParser.Core.Rules;
 using MessageParser.Core.Simulation;
 using MessageParser.Core.Filtering;
 using MessageParser.App.Models;
 using MessageParser.Plugins;
 using MessageParser.Plugins.Rules;
+using MessageParser.Plugins.Satellite;
 using MessageParser.Plugins.Simulation;
 using Avalonia.Threading;
 
@@ -24,10 +26,11 @@ namespace MessageParser.App.ViewModels;
 public partial class MainViewModel : ViewModelBase, IDisposable
 {
     private readonly DataBus _dataBus = new();
-    private readonly TestMessageLink _messageLink = new();
+    private readonly LinkRegistry _linkRegistry = new();
+    private IMessageLink _messageLink = null!;
     private readonly List<IFilterInfo> _discoveredFilterInfos = new();
-    private readonly CompositeDisposable _disposables = new();
-    
+    private CompositeDisposable _linkDisposables = new();
+
     private readonly List<MessageBase> _allMessages = new();
     private readonly List<int> _filteredIndices = new();
     private readonly MessageRegistry _messageRegistry = new();
@@ -62,6 +65,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     private string _availablePropertiesHint = "Sender, Receiver";
+
+    // Link Plugin Selector
+    public ObservableCollection<LinkDescriptor> AvailableLinks { get; } = new();
+
+    [ObservableProperty]
+    private LinkDescriptor? _selectedLinkDescriptor;
 
     // Link State Machine & Rules Engine UI Bindings
     [ObservableProperty]
@@ -101,26 +110,77 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _messageSubscription = _dataBus.Subscribe<MessageBase>(OnMessageReceived);
         _filterInfoSubscription = _dataBus.Subscribe<IFilterInfo>(OnFilterInfoReceived);
 
-        // Instantiate and register default plugin (statically for this demo)
+        // Instantiate and register default message parser plugins
         var basePlugin = new BaseMessagesPlugin();
         basePlugin.Initialize(_messageRegistry);
 
+        // Register Link Plugins into LinkRegistry
+        var tacticalLinkPlugin = new StandardTacticalLinkPlugin();
+        tacticalLinkPlugin.RegisterLinks(_linkRegistry);
+
+        var satelliteLinkPlugin = new SatelliteLinkPlugin();
+        satelliteLinkPlugin.RegisterLinks(_linkRegistry);
+
+        foreach (var descriptor in _linkRegistry.Descriptors)
+        {
+            AvailableLinks.Add(descriptor);
+        }
+
+        // Default to first link plugin (Tactical Radio Link)
+        SelectedLinkDescriptor = AvailableLinks.FirstOrDefault();
+    }
+
+    partial void OnSelectedLinkDescriptorChanged(LinkDescriptor? value)
+    {
+        if (value == null) return;
+
+        bool wasRunning = IsSimulationRunning;
+
+        // Clean up previous link subscriptions and link instance
+        _linkDisposables.Dispose();
+        _linkDisposables = new CompositeDisposable();
+
+        if (_messageLink != null)
+        {
+            _messageLink.Stop();
+            _messageLink.Dispose();
+        }
+
+        // Instantiate selected link type from plugin registry
+        _messageLink = _linkRegistry.CreateLink(value.Id);
+
+        // Reset UI Heartbeat & Fuel properties
+        IsHeartbeatLossSimulated = false;
+        GeneratorFuelPercent = 85.0;
+        _messageLink.IsReceivingHeartbeats = true;
+        if (_messageLink is TestMessageLink tacticalLink)
+        {
+            tacticalLink.GeneratorFuelPercent = 85.0;
+        }
+
         // Bind reactive simulator streams via IObservable
-        _disposables.Add(_messageLink.RawMessageStream.Subscribe(OnSimulatorRawMessageReceived));
-        _disposables.Add(_messageLink.MessageStream.Subscribe(OnSimulatorMessageReceived));
+        _linkDisposables.Add(_messageLink.RawMessageStream.Subscribe(OnSimulatorRawMessageReceived));
+        _linkDisposables.Add(_messageLink.MessageStream.Subscribe(OnSimulatorMessageReceived));
 
         // Bind reactive State Machine IObservable streams
-        _disposables.Add(_messageLink.StateMachine.StateChanged.Subscribe(OnLinkStateChanged));
-        _disposables.Add(_messageLink.StateMachine.RuleLogs.Subscribe(OnRuleLogAdded));
-        _disposables.Add(_messageLink.TimeService.TimeAdvanced.Subscribe(OnTimeAdvanced));
+        _linkDisposables.Add(_messageLink.StateMachine.StateChanged.Subscribe(OnLinkStateChanged));
+        _linkDisposables.Add(_messageLink.StateMachine.RuleLogs.Subscribe(OnRuleLogAdded));
+        _linkDisposables.Add(_messageLink.TimeService.TimeAdvanced.Subscribe(OnTimeAdvanced));
 
-        // Load Rules into ViewModel collection
+        // Populate Rules collection with selected link state machine rules
+        Rules.Clear();
         foreach (var rule in _messageLink.StateMachine.RuleEngine.Rules)
         {
             Rules.Add(new RuleViewModel(rule));
         }
 
-        UpdateLinkStateDisplay(_messageLink.StateMachine.CurrentState, "Link active.");
+        RuleLogs.Insert(0, $"[{_messageLink.TimeService.Now:HH:mm:ss}] Switched to plugin link: {value.Name}");
+        UpdateLinkStateDisplay(_messageLink.StateMachine.CurrentState, $"Link active: {value.Name}");
+
+        if (wasRunning)
+        {
+            _messageLink.Start();
+        }
     }
 
     private void OnSimulatorRawMessageReceived(string rawMessage)
@@ -188,15 +248,20 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     partial void OnIsHeartbeatLossSimulatedChanged(bool value)
     {
-        _messageLink.IsReceivingHeartbeats = !value;
-        string statusText = value ? "Simulating lost incoming heartbeats..." : "Restored incoming heartbeats.";
-        RuleLogs.Insert(0, $"[{_messageLink.TimeService.Now:HH:mm:ss}] {statusText}");
+        if (_messageLink != null)
+        {
+            _messageLink.IsReceivingHeartbeats = !value;
+            string statusText = value ? "Simulating lost incoming heartbeats..." : "Restored incoming heartbeats.";
+            RuleLogs.Insert(0, $"[{_messageLink.TimeService.Now:HH:mm:ss}] {statusText}");
+        }
     }
 
     partial void OnGeneratorFuelPercentChanged(double value)
     {
-        _messageLink.GeneratorFuelPercent = value;
-        _messageLink.StateMachine.SetFuelLevel(value);
+        if (_messageLink is TestMessageLink tacticalLink)
+        {
+            tacticalLink.GeneratorFuelPercent = value;
+        }
     }
 
     [RelayCommand]
@@ -204,9 +269,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         if (double.TryParse(scaleFactorStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double scale))
         {
-            _messageLink.TimeService.TimeScale = scale;
-            TimeScaleText = scale == 1.0 ? "1.0x Speed" : $"{scale:F1}x Speed";
-            RuleLogs.Insert(0, $"[{_messageLink.TimeService.Now:HH:mm:ss}] Clock speed set to {TimeScaleText}");
+            if (_messageLink != null)
+            {
+                _messageLink.TimeService.TimeScale = scale;
+                TimeScaleText = scale == 1.0 ? "1.0x Speed" : $"{scale:F1}x Speed";
+                RuleLogs.Insert(0, $"[{_messageLink.TimeService.Now:HH:mm:ss}] Clock speed set to {TimeScaleText}");
+            }
         }
     }
 
@@ -215,18 +283,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         if (double.TryParse(secondsStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double sec))
         {
-            _messageLink.TimeService.AdvanceTime(TimeSpan.FromSeconds(sec));
-            _messageLink.StateMachine.EvaluateStateAndRules();
-            RuleLogs.Insert(0, $"[{_messageLink.TimeService.Now:HH:mm:ss}] Fast-forwarded time by +{sec}s");
+            if (_messageLink != null)
+            {
+                _messageLink.TimeService.AdvanceTime(TimeSpan.FromSeconds(sec));
+                _messageLink.StateMachine.EvaluateStateAndRules();
+                RuleLogs.Insert(0, $"[{_messageLink.TimeService.Now:HH:mm:ss}] Fast-forwarded time by +{sec}s");
+            }
         }
     }
 
     [RelayCommand]
     private void ResetLinkState()
     {
-        _messageLink.StateMachine.Reset(MessageLinkState.Connected);
-        IsHeartbeatLossSimulated = false;
-        _messageLink.IsReceivingHeartbeats = true;
+        if (_messageLink != null)
+        {
+            _messageLink.Reset();
+            IsHeartbeatLossSimulated = false;
+        }
     }
 
     [RelayCommand]
@@ -551,13 +624,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         if (IsSimulationRunning)
         {
-            _messageLink.Stop();
+            _messageLink?.Stop();
             IsSimulationRunning = false;
             SimulationButtonText = "Start Simulator";
         }
         else
         {
-            _messageLink.Start();
+            _messageLink?.Start();
             IsSimulationRunning = true;
             SimulationButtonText = "Stop Simulator";
         }
@@ -567,8 +640,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         _messageSubscription?.Dispose();
         _filterInfoSubscription?.Dispose();
-        _disposables.Dispose();
-        _messageLink.Stop();
+        _linkDisposables.Dispose();
+        _messageLink?.Dispose();
     }
 }
 

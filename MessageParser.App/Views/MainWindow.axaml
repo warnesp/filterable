@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MessageParser.App.ViewModels"
+        xmlns:plugins="using:MessageParser.Core.Plugins"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="750"
@@ -8,7 +9,7 @@
         x:Class="MessageParser.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="Live Message Protocol Simulator &amp; Rules Engine"
+        Title="Live Message Protocol Simulator &amp; Plugin Rules Engine"
         Background="#121214">
 
     <Design.DataContext>
@@ -21,7 +22,7 @@
             <Grid ColumnDefinitions="*, Auto">
                 <StackPanel Grid.Column="0" Spacing="4">
                     <TextBlock Text="Live Message Protocol Simulator &amp; Rules Engine" FontSize="20" FontWeight="Bold" Foreground="#ECECF1" />
-                    <TextBlock Text="State machine link driver, timing fast-forward service, and rules engine." FontSize="12" Foreground="#8E8E9F" />
+                    <TextBlock Text="Plugin-driven link state machines, virtual timing fast-forward service, and rules policy engine." FontSize="12" Foreground="#8E8E9F" />
                 </StackPanel>
 
                 <!-- Clock & State Machine Badge -->
@@ -48,11 +49,24 @@
             </Grid>
         </Border>
 
-        <!-- Link Control & Fast-Forward Bar -->
+        <!-- Link Control, Plugin Selector & Fast-Forward Bar -->
         <Border Grid.Row="1" Background="#18181C" Padding="15,10" BorderBrush="#2D2D34" BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="Auto, *, Auto">
-                <!-- Simulation Main Controls -->
+                <!-- Plugin Link Selector & Simulation Main Controls -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <TextBlock Text="Plugin Link:" FontSize="11" Foreground="#8E8E9F" VerticalAlignment="Center"/>
+                    <ComboBox ItemsSource="{Binding AvailableLinks}"
+                              SelectedItem="{Binding SelectedLinkDescriptor, Mode=TwoWay}"
+                              Width="180" Height="30" FontSize="11" VerticalAlignment="Center">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="plugins:LinkDescriptor">
+                                <TextBlock Text="{Binding Name}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+
+                    <Rectangle Width="1" Height="16" Fill="#3D3D44" Margin="3,0"/>
+
                     <Button Content="{Binding SimulationButtonText}" 
                             Command="{Binding ToggleSimulationCommand}" 
                             Classes="accent"
@@ -64,22 +78,22 @@
                 </StackPanel>
 
                 <!-- Timing & Test Fast Forward Controls -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <TextBlock Text="Fast-Forward Clock:" FontSize="11" Foreground="#8E8E9F" VerticalAlignment="Center"/>
-                    <Button Content="1.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="1.0" Padding="8,4" FontSize="11"/>
-                    <Button Content="2.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="2.0" Padding="8,4" FontSize="11"/>
-                    <Button Content="5.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="5.0" Padding="8,4" FontSize="11"/>
-                    <Button Content="10.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="10.0" Padding="8,4" FontSize="11"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Clock Speed:" FontSize="11" Foreground="#8E8E9F" VerticalAlignment="Center"/>
+                    <Button Content="1.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="1.0" Padding="7,4" FontSize="11"/>
+                    <Button Content="2.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="2.0" Padding="7,4" FontSize="11"/>
+                    <Button Content="5.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="5.0" Padding="7,4" FontSize="11"/>
+                    <Button Content="10.0x" Command="{Binding SetTimeScaleCommand}" CommandParameter="10.0" Padding="7,4" FontSize="11"/>
 
                     <Rectangle Width="1" Height="16" Fill="#3D3D44" Margin="5,0"/>
 
-                    <Button Content="+1s" Command="{Binding StepTimeSecondsCommand}" CommandParameter="1.0" Padding="8,4" FontSize="11"/>
-                    <Button Content="+5s" Command="{Binding StepTimeSecondsCommand}" CommandParameter="5.0" Padding="8,4" FontSize="11"/>
+                    <Button Content="+1s" Command="{Binding StepTimeSecondsCommand}" CommandParameter="1.0" Padding="7,4" FontSize="11"/>
+                    <Button Content="+5s" Command="{Binding StepTimeSecondsCommand}" CommandParameter="5.0" Padding="7,4" FontSize="11"/>
                 </StackPanel>
 
                 <!-- Scenario Injections -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <ToggleButton Content="Drop Heartbeat (Test 2s/5s)" 
+                    <ToggleButton Content="Drop Heartbeat (Test Loss)" 
                                   IsChecked="{Binding IsHeartbeatLossSimulated, Mode=TwoWay}"
                                   Padding="10,5" FontSize="11" Foreground="#F88F92"/>
                     <Button Content="Set Low Fuel (&lt;20%)" 
@@ -234,7 +248,7 @@
                         Padding="15"
                         Margin="0,8,0,0">
                     <Grid RowDefinitions="Auto, *, Auto">
-                        <TextBlock Grid.Row="0" Text="Rules Engine &amp; State Policy" FontSize="14" FontWeight="SemiBold" Foreground="#ECECF1" Margin="0,0,0,10"/>
+                        <TextBlock Grid.Row="0" Text="Plugin Rules Engine &amp; Policy" FontSize="14" FontWeight="SemiBold" Foreground="#ECECF1" Margin="0,0,0,10"/>
                         
                         <!-- List of Rules -->
                         <ScrollViewer Grid.Row="1" Background="#141417" CornerRadius="6" Padding="5">

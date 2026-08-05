@@ -1,99 +1,31 @@
 using System;
-using System.Reactive.Subjects;
-using System.Threading;
-using System.Threading.Tasks;
 using MessageParser.Core.Messages;
-using MessageParser.Core.Rules;
 using MessageParser.Core.Simulation;
 using MessageParser.Plugins.Rules;
 
 namespace MessageParser.Plugins.Simulation
 {
-    public class TestMessageLink
+    public class TestMessageLink : MessageLinkBase
     {
         private readonly Random _random = new Random();
-        private CancellationTokenSource? _cts;
-        private Task? _runTask;
 
-        private readonly Subject<string> _rawMessageSubject = new Subject<string>();
-        private readonly Subject<MessageBase> _messageSubject = new Subject<MessageBase>();
+        public override string LinkId => "LINK_TACTICAL_RADIO";
+        public override string Name => "Tactical Radio Link";
+        public override string Description => "Standard UHF/VHF Tactical Radio Link with Heartbeat, AirTrack, and Low Fuel Rules.";
 
-        public LinkStateMachine StateMachine { get; }
-        public ITimeService TimeService => StateMachine.TimeService;
-
-        // Configuration / Controls for simulation testing
-        public bool IsReceivingHeartbeats { get; set; } = true;
         public double GeneratorFuelPercent { get; set; } = 85.0;
 
-        // IObservable reactive streams
-        public IObservable<string> RawMessageStream => _rawMessageSubject;
-        public IObservable<MessageBase> MessageStream => _messageSubject;
-
         public TestMessageLink(ITimeService? timeService = null)
+            : base(new LinkStateMachine(timeService))
         {
-            StateMachine = new LinkStateMachine(timeService);
-            
-            // Register standard built-in rules
+            // Register standard built-in rules for tactical radio link
             StateMachine.RuleEngine.RegisterRule(new HeartbeatTimeoutRule());
             StateMachine.RuleEngine.RegisterRule(new AutoHeartbeatSendRule());
             StateMachine.RuleEngine.RegisterRule(new AirTrackUpdateRule());
             StateMachine.RuleEngine.RegisterRule(new LowFuelStatusRule());
-
-            // Subscribe to OutboundMessages stream from StateMachine
-            StateMachine.OutboundMessages.Subscribe(OnRuleOutboundMessageGenerated);
         }
 
-        private void OnRuleOutboundMessageGenerated(MessageBase message)
-        {
-            _messageSubject.OnNext(message);
-            string formattedRaw = FormatMessageToRaw(message);
-            if (!string.IsNullOrEmpty(formattedRaw))
-            {
-                _rawMessageSubject.OnNext(formattedRaw);
-            }
-        }
-
-        // Starts the simulation loop
-        public void Start()
-        {
-            if (_runTask != null) return; // Already running
-
-            StateMachine.Start();
-            _cts = new CancellationTokenSource();
-            _runTask = RunSimulationLoopAsync(_cts.Token);
-        }
-
-        // Stops the simulation loop
-        public void Stop()
-        {
-            StateMachine.Stop();
-            if (_runTask == null) return;
-
-            _cts?.Cancel();
-            _runTask = null;
-            _cts = null;
-        }
-
-        private async Task RunSimulationLoopAsync(CancellationToken cancellationToken)
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                // Delay using virtual time service (e.g. 500ms in simulated time)
-                await TimeService.DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
-
-                // Generate a random incoming message if link is not closed
-                if (StateMachine.CurrentState != MessageLinkState.Closed)
-                {
-                    string rawMessage = GenerateRandomMessage();
-                    if (!string.IsNullOrEmpty(rawMessage))
-                    {
-                        _rawMessageSubject.OnNext(rawMessage);
-                    }
-                }
-            }
-        }
-
-        public string GenerateRandomMessage()
+        public override string GenerateRandomMessage()
         {
             int messageType = _random.Next(5);
 
@@ -194,7 +126,7 @@ namespace MessageParser.Plugins.Simulation
             }
         }
 
-        private string FormatMessageToRaw(MessageBase msg)
+        protected override string FormatMessageToRaw(MessageBase msg)
         {
             if (msg is HeartBeat hb)
             {
