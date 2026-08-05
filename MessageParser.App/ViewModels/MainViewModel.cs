@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive.Disposables;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -38,6 +39,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     private IDisposable? _messageSubscription;
     private IDisposable? _filterInfoSubscription;
+    private CancellationTokenSource? _searchCts;
 
     [ObservableProperty]
     private string _sender = string.Empty;
@@ -125,6 +127,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             AvailableLinks.Add(descriptor);
         }
+
+        // Subscribe to DataBus unhandled exceptions for UI error logging
+        _dataBus.UnhandledException += OnDataBusUnhandledException;
 
         // Default to first link plugin (Tactical Radio Link)
         SelectedLinkDescriptor = AvailableLinks.FirstOrDefault();
@@ -486,42 +491,67 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private async Task RefreshFilteredMessagesAsync()
+    private void OnDataBusUnhandledException(object? sender, DataBusExceptionEventArgs e)
     {
-        string currentQuery = SearchQuery;
-        var filterPredicate = CompileFilter(currentQuery);
-
-        var matched = await Task.Run(() =>
-        {
-            var results = new List<int>();
-            lock (_allMessages)
-            {
-                for (int i = 0; i < _allMessages.Count; i++)
-                {
-                    if (filterPredicate(_allMessages[i]))
-                    {
-                        results.Add(i);
-                    }
-                }
-            }
-            return results;
-        });
-
-        lock (_allMessages)
-        {
-            _filteredIndices.Clear();
-            _filteredIndices.AddRange(matched);
-        }
-
         Dispatcher.UIThread.Post(() =>
         {
-            (SimulatedMessages as VirtualizedMessageList)?.NotifyReset();
-
-            if (SelectedMessage != null && !SimulatedMessages.Cast<SimulatedMessageItemViewModel>().Contains(SelectedMessage))
-            {
-                SelectedMessage = null;
-            }
+            RuleLogs.Insert(0, $"[{DateTime.UtcNow:HH:mm:ss}] [ERROR] Subscriber failed ({e.SubscribedType.Name}): {e.Exception.Message}");
+            if (RuleLogs.Count > 50) RuleLogs.RemoveAt(RuleLogs.Count - 1);
         });
+    }
+
+    private async Task RefreshFilteredMessagesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Debounce rapid typing by 150ms
+            await Task.Delay(150, cancellationToken).ConfigureAwait(false);
+
+            string currentQuery = SearchQuery;
+            var filterPredicate = CompileFilter(currentQuery);
+
+            var matched = await Task.Run(() =>
+            {
+                var results = new List<int>();
+                lock (_allMessages)
+                {
+                    for (int i = 0; i < _allMessages.Count; i++)
+                    {
+                        if (cancellationToken.IsCancellationRequested) return results;
+
+                        if (filterPredicate(_allMessages[i]))
+                        {
+                            results.Add(i);
+                        }
+                    }
+                }
+                return results;
+            }, cancellationToken).ConfigureAwait(false);
+
+            if (cancellationToken.IsCancellationRequested) return;
+
+            lock (_allMessages)
+            {
+                if (cancellationToken.IsCancellationRequested) return;
+                _filteredIndices.Clear();
+                _filteredIndices.AddRange(matched);
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (cancellationToken.IsCancellationRequested) return;
+                (SimulatedMessages as VirtualizedMessageList)?.NotifyReset();
+
+                if (SelectedMessage != null && !SimulatedMessages.Cast<SimulatedMessageItemViewModel>().Contains(SelectedMessage))
+                {
+                    SelectedMessage = null;
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellation from debounced typing
+        }
     }
 
     private Func<object?, bool> GetPredicateForOperator(Type propertyType, string op, string filterVal)
@@ -576,7 +606,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     partial void OnSearchQueryChanged(string value)
     {
-        _ = RefreshFilteredMessagesAsync();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        _ = RefreshFilteredMessagesAsync(_searchCts.Token);
     }
 
     partial void OnSelectedMessageChanged(SimulatedMessageItemViewModel? value)
@@ -638,6 +671,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _dataBus.UnhandledException -= OnDataBusUnhandledException;
         _messageSubscription?.Dispose();
         _filterInfoSubscription?.Dispose();
         _linkDisposables.Dispose();
